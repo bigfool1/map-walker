@@ -42,6 +42,10 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			if existing, ok := h.clients[client.ID()]; ok && existing != client {
+				delete(h.clients, client.ID())
+				existing.CloseSend()
+			}
 			h.clients[client.ID()] = client
 			h.sendSnapshot(client)
 		case client := <-h.unregister:
@@ -80,7 +84,8 @@ func (h *Hub) UpdatePosition(update PositionUpdateMessage) {
 }
 
 func (h *Hub) removeClient(client ClientSender) {
-	if _, ok := h.clients[client.ID()]; !ok {
+	current, ok := h.clients[client.ID()]
+	if !ok || current != client {
 		return
 	}
 	delete(h.clients, client.ID())

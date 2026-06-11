@@ -17,6 +17,7 @@ type Client struct {
 	conn      *websocket.Conn
 	hub       *Hub
 	send      chan []byte
+	cancel    context.CancelFunc
 	closeOnce sync.Once
 }
 
@@ -47,11 +48,16 @@ func (c *Client) Send(data []byte) bool {
 
 func (c *Client) CloseSend() {
 	c.closeOnce.Do(func() {
+		if c.cancel != nil {
+			c.cancel()
+		}
 		close(c.send)
+		_ = c.conn.Close(websocket.StatusGoingAway, "disconnected")
 	})
 }
 
 func (c *Client) Run(ctx context.Context) {
+	ctx, c.cancel = context.WithCancel(ctx)
 	c.hub.Register(c)
 	defer c.hub.Unregister(c)
 

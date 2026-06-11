@@ -48,8 +48,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
 	client := realtime.NewClient(playerID, conn, s.hub)
-	client.Run(context.Background())
+	client.Run(ctx)
 
 	_ = conn.Close(websocket.StatusNormalClosure, "connection closed")
 }

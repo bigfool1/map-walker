@@ -76,6 +76,43 @@ func TestHubUnregisterRemovesPlayerAndBroadcasts(t *testing.T) {
 	}
 }
 
+func TestHubReplaceDuplicatePlayerID(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	old := NewTestClient("alice", 4)
+	replacement := NewTestClient("alice", 4)
+	hub.Register(old)
+	mustReceiveSnapshot(t, old)
+
+	hub.Register(replacement)
+	mustReceiveSnapshot(t, replacement)
+
+	select {
+	case <-old.done:
+	case <-time.After(time.Second):
+		t.Fatal("expected old client to be disconnected")
+	}
+
+	hub.UpdatePosition(PositionUpdateMessage{
+		Type:     MessageTypePositionUpdate,
+		PlayerID: "alice",
+		Lat:      31.2304,
+		Lng:      121.4737,
+	})
+	snapshot := mustReceiveSnapshot(t, replacement)
+	if len(snapshot.Players) != 1 {
+		t.Fatalf("expected 1 player, got %+v", snapshot.Players)
+	}
+
+	hub.Unregister(old)
+	snapshot = mustReceiveSnapshot(t, replacement)
+	if len(snapshot.Players) != 1 {
+		t.Fatalf("expected replacement to remain after stale unregister, got %+v", snapshot.Players)
+	}
+}
+
 func TestHubDropsSlowClient(t *testing.T) {
 	hub := NewHub()
 	go hub.Run()
