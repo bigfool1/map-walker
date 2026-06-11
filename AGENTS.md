@@ -24,7 +24,6 @@ go run ./cmd/server    # 启动服务
 
 - 不做提前抽象，一个函数一个职责
 - Hub actor 模式下，状态修改集中在 `Run()` loop 里，不要在其他地方加锁
-- Commit 不加 Co-Authored-By 或类似 trailer
 - 删代码 > 加代码
 - 没有显式要求的验证/错误处理/fallback 不要加
 - 不确定时先问，不要猜
