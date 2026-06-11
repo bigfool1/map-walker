@@ -48,7 +48,7 @@ specific bug.
 - Create: `internal/game/world_test.go`
 - Modify: `internal/game/state.go`
 
-- [ ] **Step 1: Write World tests**
+- [x] **Step 1: Write World tests**
 
 Create `internal/game/world_test.go`:
 
@@ -234,7 +234,7 @@ func distanceMeters(startLat, startLng float64, end PlayerPosition) float64 {
 }
 ```
 
-- [ ] **Step 2: Run the World tests and verify failure**
+- [x] **Step 2: Run the World tests and verify failure**
 
 Run:
 
@@ -245,7 +245,7 @@ go test ./internal/game
 Expected: FAIL because `World`, `Config`, `InputState`, and related helpers are
 undefined.
 
-- [ ] **Step 3: Implement World**
+- [x] **Step 3: Implement World**
 
 Create `internal/game/world.go`:
 
@@ -461,7 +461,7 @@ func metersPerDegreeLongitude(latitude float64) float64 {
 }
 ```
 
-- [ ] **Step 4: Move `PlayerPosition` ownership out of phase-one State**
+- [x] **Step 4: Move `PlayerPosition` ownership out of phase-one State**
 
 Delete this declaration from `internal/game/state.go`:
 
@@ -476,7 +476,7 @@ type PlayerPosition struct {
 Do not otherwise change `State`. It temporarily reuses the `PlayerPosition`
 declared in `world.go`, keeping phase-one realtime code buildable.
 
-- [ ] **Step 5: Run and format World tests**
+- [x] **Step 5: Run and format World tests**
 
 Run:
 
@@ -489,7 +489,7 @@ go test ./...
 Expected: both commands PASS. Keep phase-one `state.go` and `state_test.go`
 temporarily so the existing realtime package continues to compile.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -506,7 +506,7 @@ git commit -m "feat: add authoritative game world"
 - Modify: `internal/realtime/messages.go`
 - Replace: `internal/realtime/messages_test.go`
 
-- [ ] **Step 1: Replace protocol tests**
+- [x] **Step 1: Replace protocol tests**
 
 Replace `internal/realtime/messages_test.go` with:
 
@@ -586,7 +586,7 @@ func TestEncodePlayersDelta(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run:
 
@@ -597,7 +597,7 @@ go test ./internal/realtime
 Expected: FAIL because the new message names and encoding functions do not
 exist.
 
-- [ ] **Step 3: Add new message types while retaining old types temporarily**
+- [x] **Step 3: Add new message types while retaining old types temporarily**
 
 Replace `internal/realtime/messages.go` with:
 
@@ -689,7 +689,7 @@ func NewPlayersSnapshotMessage(players []game.PlayerPosition) PlayersSnapshotMes
 }
 ```
 
-- [ ] **Step 4: Format and run only protocol tests**
+- [x] **Step 4: Format and run only protocol tests**
 
 Run:
 
@@ -701,7 +701,7 @@ go test ./internal/realtime -run 'Test(DecodeInputMessage|EncodeWorldSnapshot|En
 Expected: PASS. The temporary phase-one definitions keep existing Hub and Client
 compiling while the new protocol is introduced.
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 Run:
 
@@ -711,7 +711,7 @@ go test ./...
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -730,7 +730,7 @@ git commit -m "feat: add authoritative movement protocol"
 - Delete: `internal/game/state.go`
 - Delete: `internal/game/state_test.go`
 
-- [ ] **Step 1: Replace Hub tests**
+- [x] **Step 1: Replace Hub tests**
 
 Replace `internal/realtime/hub_test.go` with:
 
@@ -998,7 +998,7 @@ func assertNoMessage(t *testing.T, client *testClient) {
 }
 ```
 
-- [ ] **Step 2: Replace Hub implementation**
+- [x] **Step 2: Replace Hub implementation**
 
 Replace `internal/realtime/hub.go` with:
 
@@ -1234,12 +1234,12 @@ func (h *Hub) logStats() {
 }
 ```
 
-- [ ] **Step 3: Delete phase-one State**
+- [x] **Step 3: Delete phase-one State**
 
 Delete `internal/game/state.go` and `internal/game/state_test.go` with
 `apply_patch`. `PlayerPosition` now lives in `world.go`.
 
-- [ ] **Step 4: Format and run realtime tests**
+- [x] **Step 4: Format and run realtime tests**
 
 Run:
 
@@ -1251,7 +1251,7 @@ go test ./internal/realtime
 Expected: protocol and Hub tests PASS. `client.go` still compiles because Task 2
 temporarily retained the phase-one message definitions.
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 Run:
 
@@ -1261,7 +1261,7 @@ go test ./...
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Hub migration**
+- [x] **Step 6: Commit Hub migration**
 
 Run:
 
@@ -1278,7 +1278,7 @@ git commit -m "feat: add tick-driven authoritative hub"
 - Modify: `internal/realtime/client.go`
 - Modify: `internal/realtime/messages.go`
 
-- [ ] **Step 1: Replace the read-loop decode block**
+- [x] **Step 1: Replace the read-loop decode block**
 
 Replace `readLoop` with:
 
@@ -1306,7 +1306,7 @@ func (c *Client) readLoop(ctx context.Context) {
 }
 ```
 
-- [ ] **Step 2: Make registration failure end the client**
+- [x] **Step 2: Make registration failure end the client**
 
 Replace the start of `Run` with:
 
@@ -1323,7 +1323,7 @@ func (c *Client) Run(ctx context.Context) {
 }
 ```
 
-- [ ] **Step 3: Remove phase-one message definitions**
+- [x] **Step 3: Remove phase-one message definitions**
 
 From `internal/realtime/messages.go`, delete:
 
@@ -1335,7 +1335,7 @@ MessageTypePlayersSnapshot = "players_snapshot"
 and delete `PositionUpdateMessage`, `PlayersSnapshotMessage`, and
 `NewPlayersSnapshotMessage`.
 
-- [ ] **Step 4: Format and run all Go tests**
+- [x] **Step 4: Format and run all Go tests**
 
 Run:
 
@@ -1347,7 +1347,7 @@ go vet ./...
 
 Expected: both commands PASS.
 
-- [ ] **Step 5: Confirm old protocol is gone**
+- [x] **Step 5: Confirm old protocol is gone**
 
 Run:
 
@@ -1357,7 +1357,7 @@ rg -n 'position_update|players_snapshot|PositionUpdateMessage|PlayersSnapshotMes
 
 Expected: no matches.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -1373,7 +1373,12 @@ git commit -m "feat: accept authoritative movement input"
 **Files:**
 - Replace: `web/app.js`
 
-- [ ] **Step 1: Replace frontend JavaScript**
+**Implementation note (2026-06-11):** Completed in `a907e59`. The mobile
+direction pad was replaced with a virtual joystick, so the implementation also
+updated `web/index.html` and `web/styles.css`. The same commit raised movement
+speed from 12 m/s to 60 m/s in `internal/game/world.go`.
+
+- [x] **Step 1: Replace frontend JavaScript**
 
 Replace `web/app.js` with:
 
@@ -1593,7 +1598,7 @@ function setStatus(status) {
 }
 ```
 
-- [ ] **Step 2: Confirm phase-one coordinate code is gone**
+- [x] **Step 2: Confirm phase-one coordinate code is gone**
 
 Run:
 
@@ -1603,7 +1608,7 @@ rg -n 'position_update|sendPosition|movePlayer|currentPosition|setInterval' web 
 
 Expected: no matches.
 
-- [ ] **Step 3: Run Go verification**
+- [x] **Step 3: Run Go verification**
 
 Run:
 
@@ -1614,7 +1619,7 @@ go vet ./...
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
@@ -1631,7 +1636,7 @@ git commit -m "feat: send movement intent from browser"
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 
-- [ ] **Step 1: Replace README architecture and protocol sections**
+- [x] **Step 1: Replace README architecture and protocol sections**
 
 Keep Quick Start unchanged. Replace the descriptive introduction, Architecture,
 and WebSocket Protocol sections so they include:
@@ -1681,7 +1686,7 @@ Server → Existing Clients:
 
 Retain the existing Quick Start, custom host/port, and Run Tests sections.
 
-- [ ] **Step 2: Update AGENTS.md**
+- [x] **Step 2: Update AGENTS.md**
 
 Change these lines:
 
@@ -1702,7 +1707,7 @@ Replace the protocol bullet with:
 - `Hub.Run()` 是唯一 actor loop，按 20 Hz 模拟、10 Hz 增量广播
 ```
 
-- [ ] **Step 3: Check documentation for obsolete protocol names**
+- [x] **Step 3: Check documentation for obsolete protocol names**
 
 Run:
 
@@ -1712,7 +1717,7 @@ rg -n 'position_update|players_snapshot|client-supplied coordinates|player posit
 
 Expected: no matches.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
@@ -1728,7 +1733,7 @@ git commit -m "docs: describe authoritative movement"
 **Files:**
 - Modify only if verification exposes a concrete defect.
 
-- [ ] **Step 1: Run formatting check**
+- [x] **Step 1: Run formatting check**
 
 Run:
 
@@ -1738,7 +1743,7 @@ gofmt -d cmd internal
 
 Expected: no output.
 
-- [ ] **Step 2: Run tests repeatedly**
+- [x] **Step 2: Run tests repeatedly**
 
 Run:
 
@@ -1749,7 +1754,7 @@ go test ./... -count=10
 Expected: PASS on all ten runs. This is especially important for manual-channel
 Hub tests.
 
-- [ ] **Step 3: Run static checks**
+- [x] **Step 3: Run static checks**
 
 Run:
 
@@ -1760,7 +1765,7 @@ git diff --check
 
 Expected: both commands succeed with no output.
 
-- [ ] **Step 4: Check protocol migration**
+- [x] **Step 4: Check protocol migration**
 
 Run:
 
@@ -1770,7 +1775,7 @@ rg -n 'position_update|players_snapshot|UpdatePosition|NewState|type State struc
 
 Expected: no matches.
 
-- [ ] **Step 5: Check frontend authority boundary**
+- [x] **Step 5: Check frontend authority boundary**
 
 Run:
 
@@ -1782,7 +1787,7 @@ Expected: matches are limited to map start position and rendering
 `player.lat`/`player.lng`; the outbound `socket.send` object contains no
 coordinates.
 
-- [ ] **Step 6: Commit fixes only if needed**
+- [x] **Step 6: Commit fixes only if needed**
 
 Inspect:
 
@@ -1806,7 +1811,7 @@ Do not create an empty commit.
 **Files:**
 - Modify only if verification exposes a concrete defect.
 
-- [ ] **Step 1: Start the server**
+- [x] **Step 1: Start the server**
 
 Run:
 
@@ -1822,7 +1827,7 @@ map-walker listening on http://0.0.0.0:8080
 
 The server should also print one `realtime stats` line per second.
 
-- [ ] **Step 2: Verify initial snapshot**
+- [x] **Step 2: Verify initial snapshot**
 
 Open:
 
@@ -1837,7 +1842,7 @@ Expected:
   coordinate message.
 - Browser console has no errors.
 
-- [ ] **Step 3: Verify authoritative keyboard movement**
+- [x] **Step 3: Verify authoritative keyboard movement**
 
 Hold `W` for approximately one second, then release.
 
@@ -1850,13 +1855,13 @@ Expected:
 - Server logs show about 20 simulation ticks and at most 10 delta broadcasts per
   second.
 
-- [ ] **Step 4: Verify focus-loss safety**
+- [x] **Step 4: Verify focus-loss safety**
 
 Hold a movement key, switch to another tab/window, then return.
 
 Expected: movement stops because blur/visibility handling sends neutral input.
 
-- [ ] **Step 5: Verify mobile direction pad**
+- [x] **Step 5: Verify mobile direction pad**
 
 Press and hold each direction button using a narrow browser viewport or phone.
 
@@ -1866,7 +1871,7 @@ Expected:
 - Release or pointer cancellation stops movement.
 - No browser-side movement interval exists.
 
-- [ ] **Step 6: Verify two-window snapshot and deltas**
+- [x] **Step 6: Verify two-window snapshot and deltas**
 
 Open a second browser window.
 
@@ -1877,7 +1882,7 @@ Expected:
 - Holding movement in either window updates both at the broadcast cadence.
 - Closing one window removes that marker from the other on the next delta.
 
-- [ ] **Step 7: Verify server authority in DevTools**
+- [x] **Step 7: Verify server authority in DevTools**
 
 Inspect WebSocket frames.
 
@@ -1890,7 +1895,7 @@ Expected client frames:
 
 Expected: no client frame contains `lat`, `lng`, or `playerId`.
 
-- [ ] **Step 8: Record observed metrics**
+- [x] **Step 8: Record observed metrics**
 
 With one continuously moving player, note:
 
@@ -1905,7 +1910,7 @@ With all players stationary:
 - `delta_broadcasts`, `changed_players`, and `delta_bytes` become 0 after pending
   joins/removals are flushed.
 
-- [ ] **Step 9: Commit runtime fixes only if needed**
+- [x] **Step 9: Commit runtime fixes only if needed**
 
 Run:
 
@@ -1927,7 +1932,7 @@ git commit -m "fix: correct authoritative runtime behavior"
 **Files:**
 - Modify: `docs/map-walker-handoff.md`
 
-- [ ] **Step 1: Add phase-two implementation status**
+- [x] **Step 1: Add phase-two implementation status**
 
 Append:
 
@@ -1946,7 +1951,7 @@ Append:
 - Verification: `go test ./...`, `go vet ./...`, and two-window browser testing.
 ```
 
-- [ ] **Step 2: Run final checks**
+- [x] **Step 2: Run final checks**
 
 Run:
 
@@ -1960,7 +1965,7 @@ git status --short
 Expected: tests and checks PASS. Only the intentional handoff edit should remain
 before commit.
 
-- [ ] **Step 3: Commit handoff**
+- [x] **Step 3: Commit handoff**
 
 Run:
 
@@ -1969,7 +1974,7 @@ git add docs/map-walker-handoff.md
 git commit -m "docs: update authoritative movement handoff"
 ```
 
-- [ ] **Step 4: Final response**
+- [x] **Step 4: Final response**
 
 Report:
 
