@@ -1,19 +1,20 @@
 # AGENTS.md — map-walker
 
-Go 1.26 项目，WebSocket 实时位置共享服务。
+Go 1.26 项目，服务端权威的 WebSocket 实时移动服务。
 
 ## 目录结构
 
 ```
 cmd/map-walker/    — 服务入口
-internal/game/     — 玩家状态（State, PlayerPosition）
-internal/realtime/ — Hub actor 模式，WebSocket 消息定义
+internal/game/     — World、输入状态、移动模拟和增量状态
+internal/realtime/ — Hub actor loop、tick 调度、连接和消息协议
 internal/server/   — HTTP 路由、静态文件和 WebSocket 接入
-web/               — Leaflet 地图、键盘和移动端方向键界面
+web/               — Leaflet 地图、键盘和虚拟摇杆界面
 ```
 
-- `messages.go` 定义消息类型，用 `type` 字段做路由（`position_update` / `players_snapshot`）
-- `hub.go` 的 `Hub.Run()` 是唯一的 actor loop，所有状态修改通过 channel 串行化
+- `messages.go` 定义 `input` / `world_snapshot` / `players_delta` 协议
+- `game.World` 拥有玩家坐标；客户端只能发送输入状态
+- `Hub.Run()` 是唯一 actor loop，按 20 Hz 模拟、10 Hz 增量广播
 
 ## 命令
 

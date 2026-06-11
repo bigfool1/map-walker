@@ -1,8 +1,8 @@
 # Map Walker
 
-A real-time multiplayer position-sharing demo built with Go and Leaflet. Each
-browser tab controls a player on a shared map. Move with keyboard or on-screen
-controls — all connected players see each other move in real time.
+A small server-authoritative multiplayer movement demo built with Go and
+Leaflet. Browsers send keyboard or touch input; the Go server owns player
+positions, simulates movement at 20 Hz, and broadcasts changed players at 10 Hz.
 
 ## Quick Start
 
@@ -21,34 +21,37 @@ Open two browser windows (or a phone on the same Wi-Fi) to see multiplayer.
 
 ## Architecture
 
-```
+```text
 cmd/map-walker/      — entry point, wires Hub + HTTP server
 internal/server/     — routes, static files, WebSocket upgrade
-internal/realtime/   — Hub actor loop, per-client read/write goroutines, message types
-internal/game/       — player position state, snapshots
-web/                 — Leaflet frontend, keyboard + d-pad controls
+internal/realtime/   — connection lifecycle, actor loop, tickers, protocol
+internal/game/       — authoritative World, movement rules, snapshots, deltas
+web/                 — Leaflet/Amap frontend, keyboard + virtual joystick
 ```
 
-A single Hub goroutine owns all player state. External goroutines send events
-through typed channels (`register`, `unregister`, `update`); the Hub selects on
-them in a loop, keeping all mutation in one place without locks.
-
-Each browser connection becomes a Client with two goroutines: `readLoop` pumps
-WebSocket messages into the Hub, `writeLoop` drains snapshots from a buffered
-channel back to the browser.
+The Hub goroutine owns all connections and the World. Client read goroutines
+submit input events through a channel. A 20 Hz simulation ticker advances the
+World; a separate 10 Hz broadcast ticker sends only accumulated changes and
+removals.
 
 ## WebSocket Protocol
 
-Client → Server (`position_update`):
+Client → Server:
 
 ```json
-{"type":"position_update","playerId":"p-…","lat":31.23,"lng":121.47}
+{"type":"input","sequence":42,"up":true,"down":false,"left":false,"right":true}
 ```
 
-Server → All Clients (`players_snapshot`):
+Server → Newly Connected Client:
 
 ```json
-{"type":"players_snapshot","players":[{"id":"p-…","lat":31.23,"lng":121.47}]}
+{"type":"world_snapshot","tick":1280,"players":[{"id":"p-…","lat":31.23,"lng":121.47}]}
+```
+
+Server → Existing Clients:
+
+```json
+{"type":"players_delta","tick":1282,"players":[{"id":"p-…","lat":31.24,"lng":121.48}],"removedPlayerIds":[]}
 ```
 
 ## Run Tests
