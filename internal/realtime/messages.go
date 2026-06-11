@@ -10,10 +10,6 @@ const (
 	MessageTypeInput         = "input"
 	MessageTypeWorldSnapshot = "world_snapshot"
 	MessageTypePlayersDelta  = "players_delta"
-
-	// Phase-one names remain only until Hub and Client migrate in Tasks 3-4.
-	MessageTypePositionUpdate  = "position_update"
-	MessageTypePlayersSnapshot = "players_snapshot"
 )
 
 type InputMessage struct {
@@ -48,18 +44,6 @@ type PlayersDeltaMessage struct {
 	RemovedPlayerIDs []string              `json:"removedPlayerIds"`
 }
 
-type PositionUpdateMessage struct {
-	Type     string  `json:"type"`
-	PlayerID string  `json:"playerId"`
-	Lat      float64 `json:"lat"`
-	Lng      float64 `json:"lng"`
-}
-
-type PlayersSnapshotMessage struct {
-	Type    string                `json:"type"`
-	Players []game.PlayerPosition `json:"players"`
-}
-
 func EncodeWorldSnapshot(snapshot game.Snapshot) ([]byte, error) {
 	return json.Marshal(WorldSnapshotMessage{
 		Type:    MessageTypeWorldSnapshot,
@@ -75,11 +59,4 @@ func EncodePlayersDelta(delta game.Delta) ([]byte, error) {
 		Players:          delta.Players,
 		RemovedPlayerIDs: delta.RemovedPlayerIDs,
 	})
-}
-
-func NewPlayersSnapshotMessage(players []game.PlayerPosition) PlayersSnapshotMessage {
-	return PlayersSnapshotMessage{
-		Type:    MessageTypePlayersSnapshot,
-		Players: players,
-	}
 }

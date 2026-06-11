@@ -58,7 +58,9 @@ func (c *Client) CloseSend() {
 
 func (c *Client) Run(ctx context.Context) {
 	ctx, c.cancel = context.WithCancel(ctx)
-	c.hub.Register(c)
+	if ok := c.hub.Register(c); !ok {
+		return
+	}
 	defer c.hub.Unregister(c)
 
 	go c.writeLoop(ctx)
@@ -72,17 +74,18 @@ func (c *Client) readLoop(ctx context.Context) {
 			return
 		}
 
-		var msg PositionUpdateMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
+		var message InputMessage
+		if err := json.Unmarshal(data, &message); err != nil {
 			log.Printf("decode websocket message failed: %v", err)
 			continue
 		}
-		if msg.Type != MessageTypePositionUpdate {
+		if message.Type != MessageTypeInput {
 			continue
 		}
 
-		msg.PlayerID = c.id
-		c.hub.UpdatePosition(msg)
+		if ok := c.hub.ApplyInput(c, message.InputState()); !ok {
+			return
+		}
 	}
 }
 
