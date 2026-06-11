@@ -4,117 +4,132 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"map-walker/internal/game"
 )
 
-func TestHubRegistersClientAndSendsInitialSnapshot(t *testing.T) {
-	hub := NewHub()
+func TestHubRegisterSendsSnapshotAndDefersDelta(t *testing.T) {
+	hub, _, broadcasts := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
-	client := NewTestClient("alice", 4)
-	hub.Register(client)
+	alice := NewTestClient("alice", 8)
+	if !hub.Register(alice) {
+		t.Fatal("register failed")
+	}
+	snapshot := mustReceiveSnapshot(t, alice)
+	if len(snapshot.Players) != 1 || snapshot.Players[0].ID != "alice" {
+		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	}
+	assertNoMessage(t, alice)
 
-	msg := mustReceiveSnapshot(t, client)
-	if len(msg.Players) != 0 {
-		t.Fatalf("expected empty initial snapshot, got %+v", msg.Players)
+	broadcasts <- time.Now()
+	delta := mustReceiveDelta(t, alice)
+	if len(delta.Players) != 1 || delta.Players[0].ID != "alice" {
+		t.Fatalf("expected deferred alice delta, got %+v", delta)
 	}
 }
 
-func TestHubBroadcastsPositionUpdates(t *testing.T) {
-	hub := NewHub()
+func TestHubSimulationDoesNotBroadcastUntilBroadcastTick(t *testing.T) {
+	hub, simulations, broadcasts := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 4)
-	bob := NewTestClient("bob", 4)
+	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
-	hub.Register(bob)
 	mustReceiveSnapshot(t, alice)
-	mustReceiveSnapshot(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
 
-	hub.UpdatePosition(PositionUpdateMessage{
-		Type:     MessageTypePositionUpdate,
-		PlayerID: "alice",
-		Lat:      31.2304,
-		Lng:      121.4737,
-	})
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
 
-	aliceSnapshot := mustReceiveSnapshot(t, alice)
-	bobSnapshot := mustReceiveSnapshot(t, bob)
-
-	for _, snapshot := range []PlayersSnapshotMessage{aliceSnapshot, bobSnapshot} {
-		if len(snapshot.Players) != 1 {
-			t.Fatalf("expected 1 player, got %+v", snapshot.Players)
-		}
-		if snapshot.Players[0].ID != "alice" {
-			t.Fatalf("expected alice, got %+v", snapshot.Players[0])
-		}
+	broadcasts <- time.Now()
+	delta := mustReceiveDelta(t, alice)
+	if delta.Tick != 1 || len(delta.Players) != 1 {
+		t.Fatalf("unexpected movement delta: %+v", delta)
 	}
 }
 
-func TestHubUnregisterRemovesPlayerAndBroadcasts(t *testing.T) {
-	hub := NewHub()
+func TestHubEmptyBroadcastTickSendsNothing(t *testing.T) {
+	hub, _, broadcasts := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 4)
-	bob := NewTestClient("bob", 4)
+	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
-	hub.Register(bob)
 	mustReceiveSnapshot(t, alice)
-	mustReceiveSnapshot(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
 
-	hub.UpdatePosition(PositionUpdateMessage{Type: MessageTypePositionUpdate, PlayerID: "alice", Lat: 1, Lng: 2})
-	mustReceiveSnapshot(t, alice)
-	mustReceiveSnapshot(t, bob)
-
-	hub.Unregister(alice)
-
-	msg := mustReceiveSnapshot(t, bob)
-	if len(msg.Players) != 0 {
-		t.Fatalf("expected alice to be removed, got %+v", msg.Players)
-	}
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
 }
 
-func TestHubReplaceDuplicatePlayerID(t *testing.T) {
-	hub := NewHub()
+func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
+	hub, _, broadcasts := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 4)
-	replacement := NewTestClient("alice", 4)
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveSnapshot(t, alice)
+	hub.Register(bob)
+	mustReceiveSnapshot(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
+	mustReceiveDelta(t, bob)
+
+	hub.Unregister(bob)
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	delta := mustReceiveDelta(t, alice)
+	if len(delta.RemovedPlayerIDs) != 1 || delta.RemovedPlayerIDs[0] != "bob" {
+		t.Fatalf("unexpected removals: %+v", delta.RemovedPlayerIDs)
+	}
+}
+
+func TestHubRejectsInputFromReplacedConnection(t *testing.T) {
+	hub, simulations, broadcasts := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	old := NewTestClient("alice", 8)
+	replacement := NewTestClient("alice", 8)
 	hub.Register(old)
 	mustReceiveSnapshot(t, old)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, old)
 
+	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
 	hub.Register(replacement)
 	mustReceiveSnapshot(t, replacement)
+	hub.ApplyInput(old, game.InputState{Sequence: 2, Right: true})
+	hub.ApplyInput(replacement, game.InputState{Sequence: 1, Left: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
 
-	select {
-	case <-old.done:
-	case <-time.After(time.Second):
-		t.Fatal("expected old client to be disconnected")
+	delta := mustReceiveDelta(t, replacement)
+	if len(delta.Players) != 1 {
+		t.Fatalf("unexpected replacement delta: %+v", delta)
 	}
-
-	hub.UpdatePosition(PositionUpdateMessage{
-		Type:     MessageTypePositionUpdate,
-		PlayerID: "alice",
-		Lat:      31.2304,
-		Lng:      121.4737,
-	})
-	snapshot := mustReceiveSnapshot(t, replacement)
-	if len(snapshot.Players) != 1 {
-		t.Fatalf("expected 1 player, got %+v", snapshot.Players)
+	if delta.Players[0].Lng >= testWorldConfig().SpawnLng {
+		t.Fatalf("stale old connection controlled player: %+v", delta.Players[0])
+	}
+	if len(delta.RemovedPlayerIDs) != 0 {
+		t.Fatalf("replacement must not emit removal: %+v", delta.RemovedPlayerIDs)
 	}
 
 	hub.Unregister(old)
-	snapshot = mustReceiveSnapshot(t, replacement)
-	if len(snapshot.Players) != 1 {
-		t.Fatalf("expected replacement to remain after stale unregister, got %+v", snapshot.Players)
-	}
+	broadcasts <- time.Now()
+	assertNoMessage(t, replacement)
 }
 
 func TestHubDropsSlowClient(t *testing.T) {
-	hub := NewHub()
+	hub, _, broadcasts := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -123,14 +138,44 @@ func TestHubDropsSlowClient(t *testing.T) {
 	hub.Register(slow)
 	hub.Register(fast)
 	mustReceiveSnapshot(t, fast)
-
-	hub.UpdatePosition(PositionUpdateMessage{Type: MessageTypePositionUpdate, PlayerID: "fast", Lat: 1, Lng: 2})
-	mustReceiveSnapshot(t, fast)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, fast)
 
 	select {
 	case <-slow.done:
 	case <-time.After(time.Second):
-		t.Fatal("expected slow client to be closed")
+		t.Fatal("expected slow client to close")
+	}
+}
+
+func TestHubMethodsReturnAfterStop(t *testing.T) {
+	hub, _, _ := newTestHub()
+	go hub.Run()
+	hub.Stop()
+
+	client := NewTestClient("alice", 1)
+	if hub.Register(client) {
+		t.Fatal("register should fail after stop")
+	}
+	if hub.ApplyInput(client, game.InputState{Sequence: 1, Up: true}) {
+		t.Fatal("input should fail after stop")
+	}
+	hub.Unregister(client)
+}
+
+func newTestHub() (*Hub, chan time.Time, chan time.Time) {
+	simulations := make(chan time.Time, 8)
+	broadcasts := make(chan time.Time, 8)
+	world := game.NewWorld(testWorldConfig())
+	hub := newHub(world, simulations, broadcasts, nil, func() {})
+	return hub, simulations, broadcasts
+}
+
+func testWorldConfig() game.Config {
+	return game.Config{
+		SpawnLat:             31.2304,
+		SpawnLng:             121.4737,
+		SpeedMetersPerSecond: 12,
 	}
 }
 
@@ -169,21 +214,48 @@ func (c *testClient) CloseSend() {
 	}
 }
 
-func mustReceiveSnapshot(t *testing.T, client *testClient) PlayersSnapshotMessage {
+func mustReceiveSnapshot(t *testing.T, client *testClient) WorldSnapshotMessage {
 	t.Helper()
+	data := mustReceiveData(t, client)
+	var message WorldSnapshotMessage
+	if err := json.Unmarshal(data, &message); err != nil {
+		t.Fatalf("decode snapshot failed: %v", err)
+	}
+	if message.Type != MessageTypeWorldSnapshot {
+		t.Fatalf("expected snapshot, got %q", message.Type)
+	}
+	return message
+}
 
+func mustReceiveDelta(t *testing.T, client *testClient) PlayersDeltaMessage {
+	t.Helper()
+	data := mustReceiveData(t, client)
+	var message PlayersDeltaMessage
+	if err := json.Unmarshal(data, &message); err != nil {
+		t.Fatalf("decode delta failed: %v", err)
+	}
+	if message.Type != MessageTypePlayersDelta {
+		t.Fatalf("expected delta, got %q", message.Type)
+	}
+	return message
+}
+
+func mustReceiveData(t *testing.T, client *testClient) []byte {
+	t.Helper()
 	select {
 	case data := <-client.send:
-		var msg PlayersSnapshotMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
-			t.Fatalf("decode snapshot failed: %v", err)
-		}
-		if msg.Type != MessageTypePlayersSnapshot {
-			t.Fatalf("expected snapshot message, got %q", msg.Type)
-		}
-		return msg
+		return data
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for snapshot")
-		return PlayersSnapshotMessage{}
+		t.Fatal("timed out waiting for message")
+		return nil
+	}
+}
+
+func assertNoMessage(t *testing.T, client *testClient) {
+	t.Helper()
+	select {
+	case data := <-client.send:
+		t.Fatalf("unexpected message: %s", data)
+	case <-time.After(20 * time.Millisecond):
 	}
 }
