@@ -1,0 +1,87 @@
+html,
+body,
+#map {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.status {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1b1f23;
+  font-size: 14px;
+  font-weight: 650;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.status--connected {
+  color: #116329;
+}
+
+.status--connecting {
+  color: #7a4d00;
+}
+
+.status--disconnected {
+  color: #9a1b1b;
+}
+
+.dpad {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: 56px 56px 56px;
+  grid-template-rows: 56px 56px 56px;
+  gap: 6px;
+  touch-action: none;
+}
+
+.dpad__button {
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1b1f23;
+  font-size: 24px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.dpad__button:active {
+  background: #dceeff;
+}
+
+.dpad__button--up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dpad__button--left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dpad__button--right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.dpad__button--down {
+  grid-column: 2;
+  grid-row: 3;
+}
