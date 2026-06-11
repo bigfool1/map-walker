@@ -15,6 +15,8 @@ L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scal
   attribution: "&copy; 高德地图",
 }).addTo(map);
 
+L.Icon.Default.imagePath = "/images/";
+
 connect();
 bindKeyboardControls();
 bindDpadControls();
@@ -25,7 +27,7 @@ function getOrCreatePlayerId() {
   if (existing) {
     return existing;
   }
-  const created = `p-${crypto.randomUUID()}`;
+  const created = `p-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   sessionStorage.setItem(key, created);
   return created;
 }
