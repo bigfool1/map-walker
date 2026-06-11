@@ -27,3 +27,16 @@ web/                         — Leaflet UI, app.js, styles, local assets
 - Map tiles depend on Gaode (`webrd0*.is.autonavi.com`); availability follows that provider.
 - Leaflet marker images are served from `web/images/`.
 - Duplicate browser tabs can share the same `sessionStorage` player ID; the server now replaces the older connection, but separate tabs still need distinct IDs for true multi-player testing in one profile.
+
+## Authoritative Movement Phase
+
+- Clients send directional input with a monotonically increasing sequence.
+- `game.World` owns spawn positions, movement speed, coordinates, ticks, and
+  dirty/removal tracking.
+- Simulation runs at 20 Hz.
+- Incremental broadcasts run at up to 10 Hz and skip empty deltas.
+- New clients receive `world_snapshot`; existing clients receive
+  `players_delta`.
+- Frontend movement follows server output and sends neutral input on release,
+  blur, and page hide.
+- Verification: `go test ./...`, `go vet ./...`, and two-window browser testing.
