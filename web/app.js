@@ -8,8 +8,12 @@ const input = {
   right: false,
 };
 
+const retryDelays = [1000, 2000, 4000, 8000, 10000];
+
 let inputSequence = 0;
 let socket = null;
+let retryTimer = null;
+let retryAttempt = 0;
 
 const map = L.map("map", { zoomControl: true }).setView(
   [startPosition.lat, startPosition.lng],
@@ -46,17 +50,32 @@ function getOrCreatePlayerId() {
 }
 
 function connect() {
+  clearRetryTimer();
+
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const url = `${protocol}//${window.location.host}/ws?playerId=${encodeURIComponent(playerId)}`;
-  socket = new WebSocket(url);
-  setStatus("connecting");
+  const currentSocket = new WebSocket(url);
+  socket = currentSocket;
 
-  socket.addEventListener("open", () => {
+  if (retryAttempt === 0) {
+    setStatus("connecting");
+  } else {
+    setStatus("reconnecting", retryAttempt);
+  }
+
+  currentSocket.addEventListener("open", () => {
+    if (socket !== currentSocket) {
+      return;
+    }
+    retryAttempt = 0;
     setStatus("connected");
     sendInput();
   });
 
-  socket.addEventListener("message", (event) => {
+  currentSocket.addEventListener("message", (event) => {
+    if (socket !== currentSocket) {
+      return;
+    }
     const message = JSON.parse(event.data);
     if (message.type === "world_snapshot") {
       renderSnapshot(message.players);
@@ -65,13 +84,29 @@ function connect() {
     }
   });
 
-  socket.addEventListener("close", () => {
-    setStatus("disconnected");
+  currentSocket.addEventListener("close", () => {
+    if (socket !== currentSocket) {
+      return;
+    }
+    socket = null;
+    scheduleReconnect();
   });
+}
 
-  socket.addEventListener("error", () => {
-    setStatus("disconnected");
-  });
+function scheduleReconnect() {
+  clearRetryTimer();
+  retryAttempt += 1;
+  setStatus("reconnecting", retryAttempt);
+
+  const delay = retryDelays[Math.min(retryAttempt - 1, retryDelays.length - 1)];
+  retryTimer = window.setTimeout(connect, delay);
+}
+
+function clearRetryTimer() {
+  if (retryTimer !== null) {
+    window.clearTimeout(retryTimer);
+    retryTimer = null;
+  }
 }
 
 function setDirection(direction, pressed) {
@@ -284,8 +319,14 @@ function bindInputSafetyControls() {
   });
 }
 
-function setStatus(status) {
+function setStatus(status, attempt = 0) {
   const element = document.getElementById("status");
-  element.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+  if (status === "connecting") {
+    element.textContent = "连接中";
+  } else if (status === "connected") {
+    element.textContent = "已连接";
+  } else if (status === "reconnecting") {
+    element.textContent = `连接已断开，正在重连（第 ${attempt} 次）`;
+  }
   element.className = `status status--${status}`;
 }

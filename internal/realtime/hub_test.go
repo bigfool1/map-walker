@@ -92,6 +92,36 @@ func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
 	}
 }
 
+func TestHubReplacementSurvivesObsoleteUnregister(t *testing.T) {
+	hub, simulations, broadcasts := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	old := NewTestClient("alice", 8)
+	replacement := NewTestClient("alice", 8)
+	hub.Register(old)
+	mustReceiveSnapshot(t, old)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, old)
+
+	hub.Register(replacement)
+	mustReceiveSnapshot(t, replacement)
+
+	hub.Unregister(old)
+	broadcasts <- time.Now()
+	assertNoMessage(t, replacement)
+
+	hub.ApplyInput(replacement, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, replacement)
+	broadcasts <- time.Now()
+
+	delta := mustReceiveDelta(t, replacement)
+	if len(delta.RemovedPlayerIDs) != 0 {
+		t.Fatalf("replacement removed: %+v", delta.RemovedPlayerIDs)
+	}
+}
+
 func TestHubRejectsInputFromReplacedConnection(t *testing.T) {
 	hub, simulations, broadcasts := newTestHub()
 	go hub.Run()

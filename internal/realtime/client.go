@@ -12,6 +12,11 @@ import (
 
 const sendBufferSize = 16
 
+var (
+	pingInterval = 15 * time.Second
+	pingTimeout  = 5 * time.Second
+)
+
 type Client struct {
 	id        string
 	conn      *websocket.Conn
@@ -47,6 +52,10 @@ func (c *Client) Send(data []byte) bool {
 }
 
 func (c *Client) CloseSend() {
+	c.finish()
+}
+
+func (c *Client) finish() {
 	c.closeOnce.Do(func() {
 		if c.cancel != nil {
 			c.cancel()
@@ -59,11 +68,16 @@ func (c *Client) CloseSend() {
 func (c *Client) Run(ctx context.Context) {
 	ctx, c.cancel = context.WithCancel(ctx)
 	if ok := c.hub.Register(c); !ok {
+		c.finish()
 		return
 	}
-	defer c.hub.Unregister(c)
+	defer func() {
+		c.finish()
+		c.hub.Unregister(c)
+	}()
 
 	go c.writeLoop(ctx)
+	go c.heartbeatLoop(ctx)
 	c.readLoop(ctx)
 }
 
@@ -94,11 +108,32 @@ func (c *Client) writeLoop(ctx context.Context) {
 	// rule of making one task responsible for socket writes so concurrent sends
 	// do not interleave frames or fight over connection state.
 	for data := range c.send {
-		writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		writeCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 		err := c.conn.Write(writeCtx, websocket.MessageText, data)
 		cancel()
 		if err != nil {
+			c.finish()
 			return
+		}
+	}
+}
+
+func (c *Client) heartbeatLoop(ctx context.Context) {
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+			err := c.conn.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				c.finish()
+				return
+			}
 		}
 	}
 }

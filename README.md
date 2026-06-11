@@ -34,6 +34,17 @@ submit input events through a channel. A 20 Hz simulation ticker advances the
 World; a separate 10 Hz broadcast ticker sends only accumulated changes and
 removals.
 
+Each WebSocket client sends protocol-level pings to detect unresponsive peers.
+Heartbeat, read, and write failures all end the same connection lifecycle; the
+Hub actor loop remains the only owner of player removal.
+
+Browsers reconnect automatically after disconnects. Retry delays grow through 1,
+2, 4, and 8 seconds, then cap at 10 seconds. The tab reuses its `playerId` from
+`sessionStorage`, but the server treats each reconnect as a new registration at
+the spawn position. Map markers stay visible while disconnected; the next
+`world_snapshot` reconciles rendering. Input history is not queued while
+disconnected—only the latest controls are sent when the socket opens.
+
 ## WebSocket Protocol
 
 Client → Server:
