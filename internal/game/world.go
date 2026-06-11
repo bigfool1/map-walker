@@ -18,7 +18,7 @@ func DefaultConfig() Config {
 	return Config{
 		SpawnLat:             31.2304,
 		SpawnLng:             121.4737,
-		SpeedMetersPerSecond: 12,
+		SpeedMetersPerSecond: 60,
 	}
 }
 

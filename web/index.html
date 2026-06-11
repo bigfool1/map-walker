@@ -5,16 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Map Walker</title>
     <link rel="stylesheet" href="/leaflet.css">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=2">
   </head>
   <body>
     <main id="map" aria-label="Map Walker play area"></main>
     <div id="status" class="status status--connecting">Connecting</div>
-    <div class="dpad" aria-label="Movement controls">
-      <button class="dpad__button dpad__button--up" data-move="up" aria-label="Move up">↑</button>
-      <button class="dpad__button dpad__button--left" data-move="left" aria-label="Move left">←</button>
-      <button class="dpad__button dpad__button--right" data-move="right" aria-label="Move right">→</button>
-      <button class="dpad__button dpad__button--down" data-move="down" aria-label="Move down">↓</button>
+    <div class="joystick" aria-label="Movement joystick">
+      <div class="joystick__base">
+        <div class="joystick__knob"></div>
+      </div>
     </div>
     <script src="/leaflet.js"></script>
     <script src="/app.js"></script>

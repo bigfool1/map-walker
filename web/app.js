@@ -1,7 +1,14 @@
 const startPosition = { lat: 31.2304, lng: 121.4737 };
 const playerId = getOrCreatePlayerId();
 const markers = new Map();
-let currentPosition = { ...startPosition };
+const input = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+};
+
+let inputSequence = 0;
 let socket = null;
 
 const map = L.map("map", { zoomControl: true }).setView(
@@ -9,17 +16,23 @@ const map = L.map("map", { zoomControl: true }).setView(
   16
 );
 
-L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", {
-  maxZoom: 18,
-  subdomains: "1234",
-  attribution: "&copy; 高德地图",
-}).addTo(map);
+L.tileLayer(
+  "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+  {
+    maxZoom: 18,
+    subdomains: "1234",
+    attribution: "&copy; 高德地图",
+  }
+).addTo(map);
 
 L.Icon.Default.imagePath = "/images/";
 
+let resetJoystick = () => {};
+
 connect();
 bindKeyboardControls();
-bindDpadControls();
+bindJoystickControls();
+bindInputSafetyControls();
 
 function getOrCreatePlayerId() {
   const key = "map-walker-player-id";
@@ -40,13 +53,15 @@ function connect() {
 
   socket.addEventListener("open", () => {
     setStatus("connected");
-    sendPosition();
+    sendInput();
   });
 
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
-    if (message.type === "players_snapshot") {
-      renderPlayers(message.players);
+    if (message.type === "world_snapshot") {
+      renderSnapshot(message.players);
+    } else if (message.type === "players_delta") {
+      renderDelta(message.players, message.removedPlayerIds);
     }
   });
 
@@ -59,103 +74,214 @@ function connect() {
   });
 }
 
-function movePlayer(deltaLat, deltaLng) {
-  currentPosition = {
-    lat: currentPosition.lat + deltaLat,
-    lng: currentPosition.lng + deltaLng,
-  };
-  map.panTo([currentPosition.lat, currentPosition.lng], { animate: true });
-  sendPosition();
+function setDirection(direction, pressed) {
+  if (input[direction] === pressed) {
+    return;
+  }
+  input[direction] = pressed;
+  sendInput();
 }
 
-function sendPosition() {
+function clearInput() {
+  const changed = input.up || input.down || input.left || input.right;
+  input.up = false;
+  input.down = false;
+  input.left = false;
+  input.right = false;
+  resetJoystick();
+  if (changed) {
+    sendInput();
+  }
+}
+
+function sendInput() {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
+
+  inputSequence += 1;
   socket.send(
     JSON.stringify({
-      type: "position_update",
-      playerId,
-      lat: currentPosition.lat,
-      lng: currentPosition.lng,
+      type: "input",
+      sequence: inputSequence,
+      up: input.up,
+      down: input.down,
+      left: input.left,
+      right: input.right,
     })
   );
 }
 
-function renderPlayers(players) {
+function renderSnapshot(players) {
   const liveIds = new Set(players.map((player) => player.id));
-
   for (const [id, marker] of markers.entries()) {
     if (!liveIds.has(id)) {
       marker.remove();
       markers.delete(id);
     }
   }
+  updatePlayers(players);
+}
 
+function renderDelta(players, removedPlayerIds) {
+  for (const playerIdToRemove of removedPlayerIds) {
+    const marker = markers.get(playerIdToRemove);
+    if (marker) {
+      marker.remove();
+      markers.delete(playerIdToRemove);
+    }
+  }
+  updatePlayers(players);
+}
+
+function updatePlayers(players) {
   for (const player of players) {
     const marker = markers.get(player.id);
-    const label = player.id === playerId ? "You" : "Player";
+    const latLng = [player.lat, player.lng];
     if (marker) {
-      marker.setLatLng([player.lat, player.lng]);
+      marker.setLatLng(latLng);
     } else {
-      markers.set(
-        player.id,
-        L.marker([player.lat, player.lng]).addTo(map).bindTooltip(label)
-      );
+      const label = player.id === playerId ? "You" : "Player";
+      markers.set(player.id, L.marker(latLng).addTo(map).bindTooltip(label));
+    }
+
+    if (player.id === playerId) {
+      map.panTo(latLng, { animate: true });
     }
   }
 }
 
 function bindKeyboardControls() {
+  const directions = {
+    ArrowUp: "up",
+    w: "up",
+    ArrowDown: "down",
+    s: "down",
+    ArrowLeft: "left",
+    a: "left",
+    ArrowRight: "right",
+    d: "right",
+  };
+
   window.addEventListener("keydown", (event) => {
-    const step = 0.00015;
-    if (event.key === "ArrowUp" || event.key.toLowerCase() === "w") {
-      movePlayer(step, 0);
-    } else if (event.key === "ArrowDown" || event.key.toLowerCase() === "s") {
-      movePlayer(-step, 0);
-    } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
-      movePlayer(0, -step);
-    } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
-      movePlayer(0, step);
+    const direction = directions[event.key] || directions[event.key.toLowerCase()];
+    if (!direction) {
+      return;
     }
+    event.preventDefault();
+    setDirection(direction, true);
+  });
+
+  window.addEventListener("keyup", (event) => {
+    const direction = directions[event.key] || directions[event.key.toLowerCase()];
+    if (!direction) {
+      return;
+    }
+    event.preventDefault();
+    setDirection(direction, false);
   });
 }
 
-function bindDpadControls() {
-  // Input-normalization lesson: keyboard and mobile buttons both become calls
-  // to movePlayer(). The server never needs to know which device created the
-  // movement, similar to normalizing HTTP clients before business logic in a
-  // Python backend.
-  const step = 0.00015;
-  const moves = {
-    up: [step, 0],
-    down: [-step, 0],
-    left: [0, -step],
-    right: [0, step],
-  };
-
-  for (const button of document.querySelectorAll("[data-move]")) {
-    let timer = null;
-    const direction = button.dataset.move;
-    const [deltaLat, deltaLng] = moves[direction];
-
-    const start = (event) => {
-      event.preventDefault();
-      movePlayer(deltaLat, deltaLng);
-      timer = window.setInterval(() => movePlayer(deltaLat, deltaLng), 120);
-    };
-    const stop = () => {
-      if (timer !== null) {
-        window.clearInterval(timer);
-        timer = null;
-      }
-    };
-
-    button.addEventListener("pointerdown", start);
-    button.addEventListener("pointerup", stop);
-    button.addEventListener("pointercancel", stop);
-    button.addEventListener("pointerleave", stop);
+function setJoystickDirections(up, down, left, right) {
+  if (
+    input.up === up &&
+    input.down === down &&
+    input.left === left &&
+    input.right === right
+  ) {
+    return;
   }
+  input.up = up;
+  input.down = down;
+  input.left = left;
+  input.right = right;
+  sendInput();
+}
+
+function bindJoystickControls() {
+  const base = document.querySelector(".joystick__base");
+  const knob = document.querySelector(".joystick__knob");
+  const deadZone = 0.18;
+  let activePointer = null;
+
+  function geometry() {
+    const rect = base.getBoundingClientRect();
+    const maxRadius = rect.width / 2 - knob.offsetWidth / 2;
+    return {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      maxRadius,
+    };
+  }
+
+  function resetKnob() {
+    knob.style.transform = "translate(-50%, -50%)";
+    activePointer = null;
+  }
+
+  resetJoystick = resetKnob;
+
+  function updateFromPointer(clientX, clientY) {
+    const { centerX, centerY, maxRadius } = geometry();
+    let dx = clientX - centerX;
+    let dy = clientY - centerY;
+    const distance = Math.hypot(dx, dy);
+    if (distance > maxRadius) {
+      dx = (dx / distance) * maxRadius;
+      dy = (dy / distance) * maxRadius;
+    }
+
+    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+    if (distance / maxRadius < deadZone) {
+      setJoystickDirections(false, false, false, false);
+      return;
+    }
+
+    const axisDead = maxRadius * 0.22;
+    setJoystickDirections(
+      dy < -axisDead,
+      dy > axisDead,
+      dx < -axisDead,
+      dx > axisDead
+    );
+  }
+
+  function endPointer(event) {
+    if (activePointer !== null && event.pointerId !== activePointer) {
+      return;
+    }
+    resetKnob();
+    setJoystickDirections(false, false, false, false);
+  }
+
+  base.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    activePointer = event.pointerId;
+    base.setPointerCapture(event.pointerId);
+    updateFromPointer(event.clientX, event.clientY);
+  });
+
+  base.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activePointer) {
+      return;
+    }
+    event.preventDefault();
+    updateFromPointer(event.clientX, event.clientY);
+  });
+
+  base.addEventListener("pointerup", endPointer);
+  base.addEventListener("pointercancel", endPointer);
+  base.addEventListener("lostpointercapture", endPointer);
+}
+
+function bindInputSafetyControls() {
+  window.addEventListener("blur", clearInput);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      clearInput();
+    }
+  });
 }
 
 function setStatus(status) {
