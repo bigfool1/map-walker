@@ -40,3 +40,5 @@ Thumbs.db
 # Local debug / scratch
 tmp/
 *.log
+.superpowers/
+data/
