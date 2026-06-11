@@ -6,7 +6,7 @@
 
 **Architecture:** The Go backend serves static files and owns a WebSocket Hub. The Hub is the single owner of connected clients and in-memory player state; clients have separate read and write loops. The frontend is plain HTML/CSS/JS using Leaflet with OpenStreetMap tiles, keyboard movement, and a lightweight mobile directional pad.
 
-**Tech Stack:** Go `net/http`, `nhooyr.io/websocket`, Go tests, plain JavaScript, Leaflet, OpenStreetMap tiles.
+**Tech Stack:** Go `net/http`, `github.com/coder/websocket`, Go tests, plain JavaScript, Leaflet, OpenStreetMap tiles.
 
 ---
 
@@ -78,10 +78,10 @@ If the local Go version writes a different `go` directive such as `go 1.22.0` or
 Run:
 
 ```bash
-go get nhooyr.io/websocket@latest
+go get github.com/coder/websocket@latest
 ```
 
-Expected: `go.mod` includes `nhooyr.io/websocket`, and `go.sum` is created.
+Expected: `go.mod` includes `github.com/coder/websocket`, and `go.sum` is created.
 
 If network access is blocked, rerun with the required sandbox/network approval. Do not replace the dependency with ad-hoc WebSocket code.
 
@@ -725,7 +725,7 @@ import (
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 const sendBufferSize = 16
@@ -863,7 +863,7 @@ import (
 
 	"map-walker/internal/realtime"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 type Server struct {
@@ -1375,7 +1375,7 @@ If the browser cannot connect to `/ws`, check:
 - Browser console WebSocket URL.
 - Server log.
 - Whether `playerId` query parameter is present.
-- Whether `nhooyr.io/websocket.Accept` rejected origin settings.
+- Whether `github.com/coder/websocket.Accept` rejected origin settings.
 
 If Leaflet assets fail to load, check:
 
