@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"map-walker/internal/auth"
 	"map-walker/internal/realtime"
@@ -23,7 +28,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
-	defer db.Close()
 
 	worker := storage.NewPersistenceWorker(db)
 	hub := realtime.NewHubWithSavedPositions(storage.SavedPositionLoader(db), worker)
@@ -32,8 +36,33 @@ func main() {
 	srv := server.New(hub, auth.NewService(db))
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)
-	log.Printf("map-walker listening on http://%s", addr)
-	if err := http.ListenAndServe(addr, srv.Routes()); err != nil {
-		log.Fatal(err)
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: srv.Routes(),
 	}
+
+	go func() {
+		log.Printf("map-walker listening on http://%s", addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("http server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	log.Println("shutting down...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("http server shutdown error: %v", err)
+	}
+
+	hub.Stop()
+
+	if err := db.Close(); err != nil {
+		log.Printf("database close error: %v", err)
+	}
+	log.Println("shutdown complete")
 }

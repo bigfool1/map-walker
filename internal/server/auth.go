@@ -92,6 +92,12 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := sessionTokenFromRequest(r)
+
+	// 先断开 WebSocket 并提交最终位置，再撤销会话。
+	if user, err := s.auth.AuthenticateSession(token); err == nil {
+		s.hub.DisconnectUser(user.ID)
+	}
+
 	if err := s.auth.Logout(token); err != nil && !errors.Is(err, auth.ErrUnauthenticated) {
 		log.Printf("logout failed: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})

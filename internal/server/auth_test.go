@@ -22,7 +22,10 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("open test db failed: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(realtime.NewHub(), auth.NewService(db))
+	hub := realtime.NewHub()
+	go hub.Run()
+	t.Cleanup(func() { hub.Stop() })
+	return New(hub, auth.NewService(db))
 }
 
 func TestRegisterCreatesSession(t *testing.T) {

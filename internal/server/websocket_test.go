@@ -15,8 +15,6 @@ import (
 func newRunningTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := newTestServer(t)
-	go srv.hub.Run()
-	t.Cleanup(func() { srv.hub.Stop() })
 	server := httptest.NewServer(srv.Routes())
 	t.Cleanup(server.Close)
 	return server

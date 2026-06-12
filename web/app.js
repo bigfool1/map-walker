@@ -14,6 +14,7 @@ let inputSequence = 0;
 let socket = null;
 let retryTimer = null;
 let retryAttempt = 0;
+let shouldReconnect = true;
 
 const map = L.map("map", { zoomControl: true }).setView(
   [startPosition.lat, startPosition.lng],
@@ -99,7 +100,28 @@ function connect() {
   });
 }
 
+async function logout() {
+  shouldReconnect = false;
+  clearRetryTimer();
+  if (socket) {
+    socket.close();
+    socket = null;
+  }
+  try {
+    await fetch("/api/logout", { method: "POST" });
+  } catch {
+    // 服务器可能在响应前就断开 WebSocket，忽略网络错误
+  }
+  currentUserId = null;
+  markers.forEach((marker) => marker.remove());
+  markers.clear();
+  setStatus("disconnected");
+}
+
 function scheduleReconnect() {
+  if (!shouldReconnect) {
+    return;
+  }
   clearRetryTimer();
   retryAttempt += 1;
   setStatus("reconnecting", retryAttempt);
@@ -333,6 +355,10 @@ function setStatus(status, attempt = 0) {
     element.textContent = "已连接";
   } else if (status === "reconnecting") {
     element.textContent = `连接已断开，正在重连（第 ${attempt} 次）`;
+  } else if (status === "disconnected") {
+    element.textContent = "已登出";
   }
   element.className = `status status--${status}`;
 }
+
+window.mapWalker = { logout };

@@ -38,6 +38,10 @@ body {
   color: #9a1b1b;
 }
 
+.status--disconnected {
+  color: #555;
+}
+
 .joystick {
   position: fixed;
   left: 20px;

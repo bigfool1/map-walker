@@ -21,6 +21,11 @@ type ClientSender interface {
 	CloseSend()
 }
 
+type disconnectRequest struct {
+	userID string
+	done   chan struct{}
+}
+
 type inputEvent struct {
 	client ClientSender
 	input  game.InputState
@@ -41,6 +46,7 @@ type Hub struct {
 	clients           map[string]ClientSender
 	persistDirty      map[string]struct{}
 	persistSeq        map[string]uint64
+	disconnectUser    chan disconnectRequest
 	simulationTick    <-chan time.Time
 	broadcastTick     <-chan time.Time
 	persistenceTick   <-chan time.Time
@@ -106,6 +112,7 @@ func newHub(
 		clients:           map[string]ClientSender{},
 		persistDirty:      map[string]struct{}{},
 		persistSeq:        map[string]uint64{},
+		disconnectUser:    make(chan disconnectRequest),
 		simulationTick:    simulationTick,
 		broadcastTick:     broadcastTick,
 		persistenceTick:   persistenceTick,
@@ -146,7 +153,21 @@ func (h *Hub) Run() {
 			h.persistDirtyPositions()
 		case <-h.statsTick:
 			h.logStats()
+		case req := <-h.disconnectUser:
+			if client, ok := h.clients[req.userID]; ok {
+				h.removeClient(client)
+			}
+			if d, ok := h.persister.(PositionDrainer); ok {
+				d.Drain()
+			}
+			close(req.done)
 		case <-h.stop:
+			for _, client := range h.clients {
+				h.submitFinalPosition(client.ID())
+			}
+			if d, ok := h.persister.(PositionDrainer); ok {
+				d.Drain()
+			}
 			for _, client := range h.clients {
 				client.CloseSend()
 			}
@@ -162,6 +183,15 @@ func (h *Hub) Stop() {
 	<-h.done
 	if h.persister != nil {
 		h.persister.Stop()
+	}
+}
+
+func (h *Hub) DisconnectUser(userID string) {
+	done := make(chan struct{})
+	select {
+	case h.disconnectUser <- disconnectRequest{userID: userID, done: done}:
+		<-done
+	case <-h.done:
 	}
 }
 
@@ -258,12 +288,17 @@ func (h *Hub) submitFinalPosition(userID string) {
 		return
 	}
 	h.persistSeq[userID]++
-	h.persister.Submit([]PositionUpdate{{
+	update := []PositionUpdate{{
 		UserID: userID,
 		Lat:    position.Lat,
 		Lng:    position.Lng,
 		Seq:    h.persistSeq[userID],
-	}})
+	}}
+	if syncSub, ok := h.persister.(interface{ SubmitSync([]PositionUpdate) }); ok {
+		syncSub.SubmitSync(update)
+	} else {
+		h.persister.Submit(update)
+	}
 }
 
 func (h *Hub) sendSnapshot(client ClientSender) {

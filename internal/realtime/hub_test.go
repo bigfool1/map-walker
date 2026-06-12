@@ -294,6 +294,61 @@ func TestHubMethodsReturnAfterStop(t *testing.T) {
 	hub.Unregister(client)
 }
 
+func TestHubDisconnectUserRemovesPlayer(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveSnapshot(t, alice)
+	hub.Register(bob)
+	mustReceiveSnapshot(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
+	mustReceiveDelta(t, bob)
+
+	hub.DisconnectUser("alice")
+
+	broadcasts <- time.Now()
+	delta := mustReceiveDelta(t, bob)
+	if len(delta.RemovedPlayerIDs) != 1 || delta.RemovedPlayerIDs[0] != "alice" {
+		t.Fatalf("expected alice removed, got %+v", delta)
+	}
+
+	select {
+	case <-alice.done:
+	case <-time.After(time.Second):
+		t.Fatal("expected alice client to close after disconnect")
+	}
+}
+
+func TestHubDisconnectUserUnknownIDIsNoop(t *testing.T) {
+	hub, _, _, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	hub.DisconnectUser("nonexistent")
+}
+
+func TestHubDisconnectUserDoesNotBlockAfterStop(t *testing.T) {
+	hub, _, _, _ := newTestHub()
+	go hub.Run()
+	hub.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		hub.DisconnectUser("alice")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("DisconnectUser blocked after stop")
+	}
+}
+
 func newTestHub() (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 	return newTestHubWithLoader(nil, nil)
 }
