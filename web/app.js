@@ -1,4 +1,7 @@
 const startPosition = { lat: 31.2304, lng: 121.4737 };
+const MARKER_SIZE = 20;
+const MARKER_ANCHOR = MARKER_SIZE / 2;
+
 let currentUserId = null;
 let currentUsername = null;
 let authMode = "login";
@@ -31,8 +34,6 @@ L.tileLayer(
     attribution: "&copy; 高德地图",
   }
 ).addTo(map);
-
-L.Icon.Default.imagePath = "/images/";
 
 let resetJoystick = () => {};
 
@@ -181,6 +182,8 @@ function connect() {
       renderSnapshot(message.players);
     } else if (message.type === "players_delta") {
       renderDelta(message.players, message.removedPlayerIds);
+    } else if (message.type === "appearance_changed") {
+      renderAppearanceChanged(message.playerId, message.appearance);
     }
   });
 
@@ -207,7 +210,7 @@ async function logout() {
   }
   currentUserId = null;
   currentUsername = null;
-  markers.forEach((marker) => marker.remove());
+  markers.forEach((entry) => entry.marker.remove());
   markers.clear();
   setStatus("disconnected");
   hideAccountControl();
@@ -289,41 +292,94 @@ function sendInput() {
 
 function renderSnapshot(players) {
   const liveIds = new Set(players.map((player) => player.id));
-  for (const [id, marker] of markers.entries()) {
+  for (const [id, entry] of markers.entries()) {
     if (!liveIds.has(id)) {
-      marker.remove();
+      entry.marker.remove();
       markers.delete(id);
     }
   }
-  updatePlayers(players);
+  for (const player of players) {
+    upsertPlayerFromSnapshot(player);
+  }
 }
 
 function renderDelta(players, removedPlayerIds) {
   for (const playerIdToRemove of removedPlayerIds) {
-    const marker = markers.get(playerIdToRemove);
-    if (marker) {
-      marker.remove();
-      markers.delete(playerIdToRemove);
-    }
+    removePlayerMarker(playerIdToRemove);
   }
-  updatePlayers(players);
+  for (const player of players) {
+    updatePlayerPosition(player);
+  }
 }
 
-function updatePlayers(players) {
-  for (const player of players) {
-    const marker = markers.get(player.id);
-    const latLng = [player.lat, player.lng];
-    if (marker) {
-      marker.setLatLng(latLng);
-    } else {
-      const label = player.id === currentUserId ? "You" : "Player";
-      markers.set(player.id, L.marker(latLng).addTo(map).bindTooltip(label));
-    }
-
-    if (player.id === currentUserId) {
-      map.panTo(latLng, { animate: true });
-    }
+function renderAppearanceChanged(playerId, appearance) {
+  const entry = markers.get(playerId);
+  if (!entry || sameAppearance(entry.appearance, appearance)) {
+    return;
   }
+  entry.appearance = { color: appearance.color, shape: appearance.shape };
+  entry.marker.setIcon(playerMarkerIcon(appearance));
+}
+
+function upsertPlayerFromSnapshot(player) {
+  const latLng = [player.lat, player.lng];
+  const entry = markers.get(player.id);
+  if (entry) {
+    entry.marker.setLatLng(latLng);
+    if (!sameAppearance(entry.appearance, player.appearance)) {
+      entry.appearance = { color: player.appearance.color, shape: player.appearance.shape };
+      entry.marker.setIcon(playerMarkerIcon(player.appearance));
+    }
+  } else {
+    const label = player.id === currentUserId ? "You" : "Player";
+    const marker = L.marker(latLng, { icon: playerMarkerIcon(player.appearance) })
+      .addTo(map)
+      .bindTooltip(label);
+    markers.set(player.id, {
+      marker,
+      appearance: { color: player.appearance.color, shape: player.appearance.shape },
+    });
+  }
+
+  if (player.id === currentUserId) {
+    map.panTo(latLng, { animate: true });
+  }
+}
+
+function updatePlayerPosition(player) {
+  const entry = markers.get(player.id);
+  if (!entry) {
+    return;
+  }
+
+  const latLng = [player.lat, player.lng];
+  entry.marker.setLatLng(latLng);
+  if (player.id === currentUserId) {
+    map.panTo(latLng, { animate: true });
+  }
+}
+
+function removePlayerMarker(playerId) {
+  const entry = markers.get(playerId);
+  if (!entry) {
+    return;
+  }
+  entry.marker.remove();
+  markers.delete(playerId);
+}
+
+function sameAppearance(left, right) {
+  return left.color === right.color && left.shape === right.shape;
+}
+
+function playerMarkerIcon(appearance) {
+  return L.divIcon({
+    className: `player-marker player-marker--${appearance.shape}`,
+    html: `<span class="player-marker__shape" style="--marker-color:${appearance.color}"></span>`,
+    iconSize: [MARKER_SIZE, MARKER_SIZE],
+    iconAnchor: [MARKER_ANCHOR, MARKER_ANCHOR],
+    tooltipAnchor: [0, -MARKER_ANCHOR],
+  });
 }
 
 function bindKeyboardControls() {

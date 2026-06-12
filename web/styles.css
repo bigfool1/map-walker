@@ -154,6 +154,38 @@ body {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.player-marker {
+  background: transparent;
+  border: none;
+}
+
+.player-marker__shape {
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-color: var(--marker-color);
+}
+
+.player-marker--circle .player-marker__shape {
+  border-radius: 50%;
+}
+
+.player-marker--square .player-marker__shape {
+  border-radius: 2px;
+}
+
+.player-marker--diamond .player-marker__shape {
+  width: 14px;
+  height: 14px;
+  margin: 3px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.player-marker--triangle .player-marker__shape {
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
 .joystick {
   position: fixed;
   left: 20px;
