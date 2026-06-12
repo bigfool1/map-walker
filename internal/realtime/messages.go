@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	MessageTypeInput         = "input"
-	MessageTypeWorldSnapshot = "world_snapshot"
-	MessageTypePlayersDelta  = "players_delta"
+	MessageTypeInput             = "input"
+	MessageTypeWorldSnapshot     = "world_snapshot"
+	MessageTypePlayersDelta      = "players_delta"
+	MessageTypeAppearanceChanged = "appearance_changed"
 )
 
 type InputMessage struct {
@@ -32,9 +33,15 @@ func (m InputMessage) InputState() game.InputState {
 }
 
 type WorldSnapshotMessage struct {
-	Type    string                `json:"type"`
-	Tick    uint64                `json:"tick"`
-	Players []game.PlayerPosition `json:"players"`
+	Type    string            `json:"type"`
+	Tick    uint64            `json:"tick"`
+	Players []game.PlayerState `json:"players"`
+}
+
+type AppearanceChangedMessage struct {
+	Type       string         `json:"type"`
+	PlayerID   string         `json:"playerId"`
+	Appearance game.Appearance `json:"appearance"`
 }
 
 type PlayersDeltaMessage struct {
@@ -58,5 +65,13 @@ func EncodePlayersDelta(delta game.Delta) ([]byte, error) {
 		Tick:             delta.Tick,
 		Players:          delta.Players,
 		RemovedPlayerIDs: delta.RemovedPlayerIDs,
+	})
+}
+
+func EncodeAppearanceChanged(playerID string, appearance game.Appearance) ([]byte, error) {
+	return json.Marshal(AppearanceChangedMessage{
+		Type:       MessageTypeAppearanceChanged,
+		PlayerID:   playerID,
+		Appearance: appearance,
 	})
 }

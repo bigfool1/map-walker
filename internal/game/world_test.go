@@ -17,7 +17,7 @@ func TestWorldAddPlayerAtUsesExplicitPosition(t *testing.T) {
 	if len(snapshot.Players) != 1 {
 		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
 	}
-	if snapshot.Players[0] != (PlayerPosition{ID: "alice", Lat: 31.5, Lng: 121.5}) {
+	if snapshot.Players[0] != (PlayerState{ID: "alice", Lat: 31.5, Lng: 121.5, Appearance: DefaultAppearance()}) {
 		t.Fatalf("unexpected position: %+v", snapshot.Players[0])
 	}
 }
@@ -40,7 +40,7 @@ func TestWorldAddPlayerUsesConfiguredSpawn(t *testing.T) {
 	if len(snapshot.Players) != 1 {
 		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
 	}
-	if snapshot.Players[0] != (PlayerPosition{ID: "alice", Lat: 31.2304, Lng: 121.4737}) {
+	if snapshot.Players[0] != (PlayerState{ID: "alice", Lat: 31.2304, Lng: 121.4737, Appearance: DefaultAppearance()}) {
 		t.Fatalf("unexpected spawn: %+v", snapshot.Players[0])
 	}
 }
@@ -160,6 +160,82 @@ func TestWorldRemovePlayerReportsOnlyRemoval(t *testing.T) {
 	}
 }
 
+func TestWorldAddPlayerWithAppearance(t *testing.T) {
+	world := NewWorld(testConfig())
+
+	custom := Appearance{Color: "#ff6600", Shape: ShapeDiamond}
+	if added := world.AddPlayerWithAppearance("alice", 31.5, 121.5, custom); !added {
+		t.Fatal("expected alice to be added")
+	}
+
+	appearance, ok := world.PlayerAppearance("alice")
+	if !ok || appearance != custom {
+		t.Fatalf("unexpected appearance: ok=%v appearance=%+v", ok, appearance)
+	}
+
+	snapshot := world.Snapshot()
+	if snapshot.Players[0].Appearance != custom {
+		t.Fatalf("snapshot appearance = %+v, want %+v", snapshot.Players[0].Appearance, custom)
+	}
+}
+
+func TestWorldUpdatePlayerAppearance(t *testing.T) {
+	world := NewWorld(testConfig())
+	world.AddPlayer("alice")
+
+	updated := Appearance{Color: "#ff6600", Shape: ShapeTriangle}
+	changed, ok := world.UpdatePlayerAppearance("alice", updated)
+	if !ok || !changed {
+		t.Fatalf("expected changed appearance update, changed=%v ok=%v", changed, ok)
+	}
+
+	appearance, ok := world.PlayerAppearance("alice")
+	if !ok || appearance != updated {
+		t.Fatalf("unexpected appearance: %+v", appearance)
+	}
+
+	changed, ok = world.UpdatePlayerAppearance("alice", updated)
+	if !ok || changed {
+		t.Fatalf("expected unchanged appearance update, changed=%v ok=%v", changed, ok)
+	}
+
+	changed, ok = world.UpdatePlayerAppearance("missing", updated)
+	if ok || changed {
+		t.Fatalf("expected missing player update to fail, changed=%v ok=%v", changed, ok)
+	}
+}
+
+func TestWorldMovementPreservesAppearance(t *testing.T) {
+	world := NewWorld(testConfig())
+
+	custom := Appearance{Color: "#ff6600", Shape: ShapeSquare}
+	world.AddPlayerWithAppearance("alice", testConfig().SpawnLat, testConfig().SpawnLng, custom)
+	world.TakeDelta()
+	world.ApplyInput("alice", InputState{Sequence: 1, Right: true})
+	world.Step(time.Second)
+
+	position, ok := world.PlayerPosition("alice")
+	if !ok {
+		t.Fatal("expected alice position")
+	}
+	if position.Lng <= testConfig().SpawnLng {
+		t.Fatalf("expected movement, got %+v", position)
+	}
+
+	appearance, ok := world.PlayerAppearance("alice")
+	if !ok || appearance != custom {
+		t.Fatalf("appearance after movement = %+v, want %+v", appearance, custom)
+	}
+
+	delta := world.TakeDelta()
+	if len(delta.Players) != 1 {
+		t.Fatalf("expected one delta player, got %+v", delta.Players)
+	}
+	if delta.Players[0] != position {
+		t.Fatalf("delta position = %+v, want %+v", delta.Players[0], position)
+	}
+}
+
 func TestWorldResetInputAllowsReplacementSequenceToRestart(t *testing.T) {
 	world := newTestWorld()
 	world.AddPlayer("alice")
@@ -188,7 +264,7 @@ func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) < 1e-12
 }
 
-func distanceMeters(startLat, startLng float64, end PlayerPosition) float64 {
+func distanceMeters(startLat, startLng float64, end PlayerState) float64 {
 	latMeters := (end.Lat - startLat) * metersPerDegreeLatitude
 	lngMeters := (end.Lng - startLng) * metersPerDegreeLongitude(startLat)
 	return math.Hypot(latMeters, lngMeters)

@@ -36,9 +36,16 @@ type PlayerPosition struct {
 	Lng float64 `json:"lng"`
 }
 
+type PlayerState struct {
+	ID         string     `json:"id"`
+	Lat        float64    `json:"lat"`
+	Lng        float64    `json:"lng"`
+	Appearance Appearance `json:"appearance"`
+}
+
 type Snapshot struct {
 	Tick    uint64
-	Players []PlayerPosition
+	Players []PlayerState
 }
 
 type Delta struct {
@@ -53,6 +60,7 @@ func (d Delta) HasChanges() bool {
 
 type player struct {
 	position     PlayerPosition
+	appearance   Appearance
 	input        InputState
 	lastSequence uint64
 }
@@ -79,6 +87,10 @@ func (w *World) AddPlayer(playerID string) bool {
 }
 
 func (w *World) AddPlayerAt(playerID string, lat, lng float64) bool {
+	return w.AddPlayerWithAppearance(playerID, lat, lng, DefaultAppearance())
+}
+
+func (w *World) AddPlayerWithAppearance(playerID string, lat, lng float64, appearance Appearance) bool {
 	if _, exists := w.players[playerID]; exists {
 		return false
 	}
@@ -89,6 +101,7 @@ func (w *World) AddPlayerAt(playerID string, lat, lng float64) bool {
 			Lat: lat,
 			Lng: lng,
 		},
+		appearance: appearance,
 	}
 	w.dirtyPlayerIDs[playerID] = struct{}{}
 	delete(w.removedPlayerIDs, playerID)
@@ -164,10 +177,30 @@ func (w *World) PlayerPosition(playerID string) (PlayerPosition, bool) {
 	return p.position, true
 }
 
+func (w *World) PlayerAppearance(playerID string) (Appearance, bool) {
+	p, exists := w.players[playerID]
+	if !exists {
+		return Appearance{}, false
+	}
+	return p.appearance, true
+}
+
+func (w *World) UpdatePlayerAppearance(playerID string, appearance Appearance) (changed bool, ok bool) {
+	p, exists := w.players[playerID]
+	if !exists {
+		return false, false
+	}
+	if p.appearance == appearance {
+		return false, true
+	}
+	p.appearance = appearance
+	return true, true
+}
+
 func (w *World) Snapshot() Snapshot {
 	return Snapshot{
 		Tick:    w.tick,
-		Players: w.positionsFor(w.playersKeys()),
+		Players: w.statesFor(w.playersKeys()),
 	}
 }
 
@@ -207,6 +240,21 @@ func (w *World) positionsFor(ids []string) []PlayerPosition {
 		}
 	}
 	return positions
+}
+
+func (w *World) statesFor(ids []string) []PlayerState {
+	states := make([]PlayerState, 0, len(ids))
+	for _, id := range ids {
+		if p, exists := w.players[id]; exists {
+			states = append(states, PlayerState{
+				ID:         p.position.ID,
+				Lat:        p.position.Lat,
+				Lng:        p.position.Lng,
+				Appearance: p.appearance,
+			})
+		}
+	}
+	return states
 }
 
 func setKeys(values map[string]struct{}) []string {

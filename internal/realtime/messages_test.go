@@ -40,15 +40,35 @@ func TestDecodeInputMessageIgnoresCoordinates(t *testing.T) {
 func TestEncodeWorldSnapshot(t *testing.T) {
 	data, err := EncodeWorldSnapshot(game.Snapshot{
 		Tick: 7,
-		Players: []game.PlayerPosition{
-			{ID: "alice", Lat: 31.2304, Lng: 121.4737},
+		Players: []game.PlayerState{
+			{
+				ID:         "alice",
+				Lat:        31.2304,
+				Lng:        121.4737,
+				Appearance: game.Appearance{Color: "#3388ff", Shape: game.ShapeCircle},
+			},
 		},
 	})
 	if err != nil {
 		t.Fatalf("encode failed: %v", err)
 	}
 
-	want := `{"type":"world_snapshot","tick":7,"players":[{"id":"alice","lat":31.2304,"lng":121.4737}]}`
+	want := `{"type":"world_snapshot","tick":7,"players":[{"id":"alice","lat":31.2304,"lng":121.4737,"appearance":{"color":"#3388ff","shape":"circle"}}]}`
+	if string(data) != want {
+		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
+	}
+}
+
+func TestEncodeAppearanceChanged(t *testing.T) {
+	data, err := EncodeAppearanceChanged("user-id", game.Appearance{
+		Color: "#ff6600",
+		Shape: game.ShapeDiamond,
+	})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	want := `{"type":"appearance_changed","playerId":"user-id","appearance":{"color":"#ff6600","shape":"diamond"}}`
 	if string(data) != want {
 		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
 	}
