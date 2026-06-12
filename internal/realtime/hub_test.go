@@ -9,7 +9,7 @@ import (
 )
 
 func TestHubRegisterSendsSnapshotAndDefersDelta(t *testing.T) {
-	hub, _, broadcasts := newTestHub()
+	hub, _, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -31,7 +31,7 @@ func TestHubRegisterSendsSnapshotAndDefersDelta(t *testing.T) {
 }
 
 func TestHubSimulationDoesNotBroadcastUntilBroadcastTick(t *testing.T) {
-	hub, simulations, broadcasts := newTestHub()
+	hub, simulations, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -53,7 +53,7 @@ func TestHubSimulationDoesNotBroadcastUntilBroadcastTick(t *testing.T) {
 }
 
 func TestHubEmptyBroadcastTickSendsNothing(t *testing.T) {
-	hub, _, broadcasts := newTestHub()
+	hub, _, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -68,7 +68,7 @@ func TestHubEmptyBroadcastTickSendsNothing(t *testing.T) {
 }
 
 func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
-	hub, _, broadcasts := newTestHub()
+	hub, _, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -100,7 +100,7 @@ func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 		return 31.5, 121.5, true
 	})
 
-	hub, _, _ := newTestHubWithLoader(loader)
+	hub, _, _, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
@@ -120,7 +120,7 @@ func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
 		return 31.99, 121.99, true
 	})
 
-	hub, simulations, broadcasts := newTestHubWithLoader(loader)
+	hub, simulations, broadcasts, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
@@ -146,7 +146,7 @@ func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
 }
 
 func TestHubReplacementRetainsInMemoryPosition(t *testing.T) {
-	hub, simulations, broadcasts := newTestHub()
+	hub, simulations, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -194,7 +194,7 @@ func TestHubReplacementRetainsInMemoryPosition(t *testing.T) {
 }
 
 func TestHubReplacementSurvivesObsoleteUnregister(t *testing.T) {
-	hub, simulations, broadcasts := newTestHub()
+	hub, simulations, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -224,7 +224,7 @@ func TestHubReplacementSurvivesObsoleteUnregister(t *testing.T) {
 }
 
 func TestHubRejectsInputFromReplacedConnection(t *testing.T) {
-	hub, simulations, broadcasts := newTestHub()
+	hub, simulations, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -260,7 +260,7 @@ func TestHubRejectsInputFromReplacedConnection(t *testing.T) {
 }
 
 func TestHubDropsSlowClient(t *testing.T) {
-	hub, _, broadcasts := newTestHub()
+	hub, _, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -280,7 +280,7 @@ func TestHubDropsSlowClient(t *testing.T) {
 }
 
 func TestHubMethodsReturnAfterStop(t *testing.T) {
-	hub, _, _ := newTestHub()
+	hub, _, _, _ := newTestHub()
 	go hub.Run()
 	hub.Stop()
 
@@ -294,16 +294,17 @@ func TestHubMethodsReturnAfterStop(t *testing.T) {
 	hub.Unregister(client)
 }
 
-func newTestHub() (*Hub, chan time.Time, chan time.Time) {
-	return newTestHubWithLoader(nil)
+func newTestHub() (*Hub, chan time.Time, chan time.Time, chan time.Time) {
+	return newTestHubWithLoader(nil, nil)
 }
 
-func newTestHubWithLoader(loader SavedPositionLoader) (*Hub, chan time.Time, chan time.Time) {
+func newTestHubWithLoader(loader SavedPositionLoader, persister PositionPersister) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 	simulations := make(chan time.Time, 8)
 	broadcasts := make(chan time.Time, 8)
+	persistence := make(chan time.Time, 8)
 	world := game.NewWorld(testWorldConfig())
-	hub := newHub(world, loader, simulations, broadcasts, nil, func() {})
-	return hub, simulations, broadcasts
+	hub := newHub(world, loader, persister, simulations, broadcasts, persistence, nil, func() {})
+	return hub, simulations, broadcasts, persistence
 }
 
 func testWorldConfig() game.Config {

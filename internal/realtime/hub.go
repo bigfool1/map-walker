@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	simulationInterval = 50 * time.Millisecond
-	broadcastInterval  = 100 * time.Millisecond
-	statsInterval      = time.Second
+	simulationInterval   = 50 * time.Millisecond
+	broadcastInterval    = 100 * time.Millisecond
+	persistenceInterval  = 5 * time.Second
+	statsInterval        = time.Second
 )
 
 type ClientSender interface {
@@ -28,20 +29,24 @@ type inputEvent struct {
 type SavedPositionLoader func(userID string) (lat, lng float64, ok bool)
 
 type Hub struct {
-	world              *game.World
-	loadSavedPosition  SavedPositionLoader
-	register           chan ClientSender
-	unregister     chan ClientSender
-	inputs         chan inputEvent
-	stop           chan struct{}
-	done           chan struct{}
-	stopOnce       sync.Once
-	clients        map[string]ClientSender
-	simulationTick <-chan time.Time
-	broadcastTick  <-chan time.Time
-	statsTick      <-chan time.Time
-	stopTickers    func()
-	stats          intervalStats
+	world             *game.World
+	loadSavedPosition SavedPositionLoader
+	persister         PositionPersister
+	register          chan ClientSender
+	unregister        chan ClientSender
+	inputs            chan inputEvent
+	stop              chan struct{}
+	done              chan struct{}
+	stopOnce          sync.Once
+	clients           map[string]ClientSender
+	persistDirty      map[string]struct{}
+	persistSeq        map[string]uint64
+	simulationTick    <-chan time.Time
+	broadcastTick     <-chan time.Time
+	persistenceTick   <-chan time.Time
+	statsTick         <-chan time.Time
+	stopTickers       func()
+	stats             intervalStats
 }
 
 type intervalStats struct {
@@ -53,23 +58,27 @@ type intervalStats struct {
 }
 
 func NewHub() *Hub {
-	return NewHubWithSavedPositions(nil)
+	return NewHubWithSavedPositions(nil, nil)
 }
 
-func NewHubWithSavedPositions(loader SavedPositionLoader) *Hub {
+func NewHubWithSavedPositions(loader SavedPositionLoader, persister PositionPersister) *Hub {
 	simulationTicker := time.NewTicker(simulationInterval)
 	broadcastTicker := time.NewTicker(broadcastInterval)
+	persistenceTicker := time.NewTicker(persistenceInterval)
 	statsTicker := time.NewTicker(statsInterval)
 
 	return newHub(
 		game.NewWorld(game.DefaultConfig()),
 		loader,
+		persister,
 		simulationTicker.C,
 		broadcastTicker.C,
+		persistenceTicker.C,
 		statsTicker.C,
 		func() {
 			simulationTicker.Stop()
 			broadcastTicker.Stop()
+			persistenceTicker.Stop()
 			statsTicker.Stop()
 		},
 	)
@@ -78,24 +87,30 @@ func NewHubWithSavedPositions(loader SavedPositionLoader) *Hub {
 func newHub(
 	world *game.World,
 	loadSavedPosition SavedPositionLoader,
+	persister PositionPersister,
 	simulationTick <-chan time.Time,
 	broadcastTick <-chan time.Time,
+	persistenceTick <-chan time.Time,
 	statsTick <-chan time.Time,
 	stopTickers func(),
 ) *Hub {
 	return &Hub{
 		world:             world,
 		loadSavedPosition: loadSavedPosition,
+		persister:         persister,
 		register:          make(chan ClientSender),
-		unregister:     make(chan ClientSender),
-		inputs:         make(chan inputEvent),
-		stop:           make(chan struct{}),
-		done:           make(chan struct{}),
-		clients:        map[string]ClientSender{},
-		simulationTick: simulationTick,
-		broadcastTick:  broadcastTick,
-		statsTick:      statsTick,
-		stopTickers:    stopTickers,
+		unregister:        make(chan ClientSender),
+		inputs:            make(chan inputEvent),
+		stop:              make(chan struct{}),
+		done:              make(chan struct{}),
+		clients:           map[string]ClientSender{},
+		persistDirty:      map[string]struct{}{},
+		persistSeq:        map[string]uint64{},
+		simulationTick:    simulationTick,
+		broadcastTick:     broadcastTick,
+		persistenceTick:   persistenceTick,
+		statsTick:         statsTick,
+		stopTickers:       stopTickers,
 	}
 }
 
@@ -120,10 +135,15 @@ func (h *Hub) Run() {
 				h.stats.acceptedInputs++
 			}
 		case <-h.simulationTick:
-			h.world.Step(simulationInterval)
+			moved := h.world.Step(simulationInterval)
+			for _, playerID := range moved {
+				h.persistDirty[playerID] = struct{}{}
+			}
 			h.stats.simulationTicks++
 		case <-h.broadcastTick:
 			h.broadcastDelta()
+		case <-h.persistenceTick:
+			h.persistDirtyPositions()
 		case <-h.statsTick:
 			h.logStats()
 		case <-h.stop:
@@ -140,6 +160,9 @@ func (h *Hub) Stop() {
 		close(h.stop)
 	})
 	<-h.done
+	if h.persister != nil {
+		h.persister.Stop()
+	}
 }
 
 func (h *Hub) Register(client ClientSender) bool {
@@ -196,8 +219,51 @@ func (h *Hub) removeClient(client ClientSender) {
 	}
 
 	delete(h.clients, client.ID())
+	h.submitFinalPosition(client.ID())
 	h.world.RemovePlayer(client.ID())
+	delete(h.persistDirty, client.ID())
+	delete(h.persistSeq, client.ID())
 	client.CloseSend()
+}
+
+func (h *Hub) persistDirtyPositions() {
+	if h.persister == nil || len(h.persistDirty) == 0 {
+		return
+	}
+
+	updates := make([]PositionUpdate, 0, len(h.persistDirty))
+	for userID := range h.persistDirty {
+		position, ok := h.world.PlayerPosition(userID)
+		if !ok {
+			continue
+		}
+		h.persistSeq[userID]++
+		updates = append(updates, PositionUpdate{
+			UserID: userID,
+			Lat:    position.Lat,
+			Lng:    position.Lng,
+			Seq:    h.persistSeq[userID],
+		})
+	}
+	clear(h.persistDirty)
+	h.persister.Submit(updates)
+}
+
+func (h *Hub) submitFinalPosition(userID string) {
+	if h.persister == nil {
+		return
+	}
+	position, ok := h.world.PlayerPosition(userID)
+	if !ok {
+		return
+	}
+	h.persistSeq[userID]++
+	h.persister.Submit([]PositionUpdate{{
+		UserID: userID,
+		Lat:    position.Lat,
+		Lng:    position.Lng,
+		Seq:    h.persistSeq[userID],
+	}})
 }
 
 func (h *Hub) sendSnapshot(client ClientSender) {

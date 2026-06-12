@@ -31,7 +31,7 @@ func setHeartbeatTiming(interval, timeout time.Duration) func() {
 func TestClientDisconnectsUnresponsivePeer(t *testing.T) {
 	withFastHeartbeat(t)
 
-	hub, _, _ := newTestHub()
+	hub, _, _, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -68,7 +68,7 @@ func TestClientDisconnectsUnresponsivePeer(t *testing.T) {
 func TestClientKeepsResponsivePeerConnected(t *testing.T) {
 	withFastHeartbeat(t)
 
-	hub, _, _ := newTestHub()
+	hub, _, _, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 
@@ -113,7 +113,7 @@ func TestClientKeepsResponsivePeerConnected(t *testing.T) {
 func TestClientFinishStopsHeartbeatWorker(t *testing.T) {
 	withFastHeartbeat(t)
 
-	hub, _, _ := newTestHub()
+	hub, _, _, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
 

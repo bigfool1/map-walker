@@ -131,9 +131,10 @@ func (w *World) ApplyInput(playerID string, input InputState) bool {
 	return true
 }
 
-func (w *World) Step(deltaTime time.Duration) {
+func (w *World) Step(deltaTime time.Duration) []string {
 	w.tick += 1
 	distance := w.config.SpeedMetersPerSecond * deltaTime.Seconds()
+	moved := make([]string, 0)
 
 	for playerID, p := range w.players {
 		x := boolNumber(p.input.Right) - boolNumber(p.input.Left)
@@ -149,7 +150,18 @@ func (w *World) Step(deltaTime time.Duration) {
 		p.position.Lat += y * distance / metersPerDegreeLatitude
 		p.position.Lng += x * distance / metersPerDegreeLongitude(p.position.Lat)
 		w.dirtyPlayerIDs[playerID] = struct{}{}
+		moved = append(moved, playerID)
 	}
+	sort.Strings(moved)
+	return moved
+}
+
+func (w *World) PlayerPosition(playerID string) (PlayerPosition, bool) {
+	p, exists := w.players[playerID]
+	if !exists {
+		return PlayerPosition{}, false
+	}
+	return p.position, true
 }
 
 func (w *World) Snapshot() Snapshot {

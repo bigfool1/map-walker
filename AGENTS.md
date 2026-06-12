@@ -30,3 +30,4 @@ go run ./cmd/map-walker    # 启动服务，访问 http://localhost:8080
 - 删代码 > 加代码
 - 没有显式要求的验证/错误处理/fallback 不要加
 - 不确定时先问，不要猜
+- Hub tick 测试的并发陷阱见 [docs/concurrency-debugging.md](docs/concurrency-debugging.md)
