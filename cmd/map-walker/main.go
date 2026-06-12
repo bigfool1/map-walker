@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"map-walker/internal/auth"
+	"map-walker/internal/game"
 	"map-walker/internal/realtime"
 	"map-walker/internal/server"
 	"map-walker/internal/storage"
@@ -30,7 +31,22 @@ func main() {
 	}
 
 	worker := storage.NewPersistenceWorker(db)
-	hub := realtime.NewHubWithSavedPositions(storage.SavedPositionLoader(db), worker)
+	loadSavedPlayer := storage.SavedPlayerLoader(db)
+	hub := realtime.NewHubWithSavedPositions(func(userID string) (realtime.SavedPlayerLoad, bool) {
+		state, ok := loadSavedPlayer(userID)
+		if !ok {
+			return realtime.SavedPlayerLoad{}, false
+		}
+		return realtime.SavedPlayerLoad{
+			Lat:         state.Lat,
+			Lng:         state.Lng,
+			HasPosition: state.HasPosition,
+			Appearance: game.Appearance{
+				Color: state.Appearance.Color,
+				Shape: state.Appearance.Shape,
+			},
+		}, true
+	}, worker)
 	go hub.Run()
 
 	srv := server.New(hub, auth.NewService(db))

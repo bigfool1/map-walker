@@ -131,6 +131,38 @@ func SavedPositionLoader(db *DB) func(userID string) (lat, lng float64, ok bool)
 	}
 }
 
+type SavedPlayerState struct {
+	Lat         float64
+	Lng         float64
+	HasPosition bool
+	Appearance  Appearance
+}
+
+func (db *DB) GetUserSavedState(userID string) (SavedPlayerState, error) {
+	user, err := db.GetUserByID(userID)
+	if err != nil {
+		return SavedPlayerState{}, err
+	}
+
+	state := SavedPlayerState{Appearance: user.Appearance}
+	if user.LastLat.Valid && user.LastLng.Valid {
+		state.Lat = user.LastLat.Float64
+		state.Lng = user.LastLng.Float64
+		state.HasPosition = true
+	}
+	return state, nil
+}
+
+func SavedPlayerLoader(db *DB) func(userID string) (SavedPlayerState, bool) {
+	return func(userID string) (SavedPlayerState, bool) {
+		state, err := db.GetUserSavedState(userID)
+		if err != nil {
+			return SavedPlayerState{}, false
+		}
+		return state, true
+	}
+}
+
 func scanUser(row *sql.Row) (User, error) {
 	var user User
 	var createdAt string

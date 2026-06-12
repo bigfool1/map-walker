@@ -31,22 +31,27 @@ type inputEvent struct {
 	input  game.InputState
 }
 
-type SavedPositionLoader func(userID string) (lat, lng float64, ok bool)
+type appearanceUpdateRequest struct {
+	userID     string
+	appearance game.Appearance
+	done       chan struct{}
+}
 
 type Hub struct {
-	world             *game.World
-	loadSavedPosition SavedPositionLoader
-	persister         PositionPersister
-	register          chan ClientSender
-	unregister        chan ClientSender
-	inputs            chan inputEvent
-	stop              chan struct{}
-	done              chan struct{}
-	stopOnce          sync.Once
-	clients           map[string]ClientSender
-	persistDirty      map[string]struct{}
-	persistSeq        map[string]uint64
-	disconnectUser    chan disconnectRequest
+	world              *game.World
+	loadSavedPlayer    SavedPlayerLoader
+	persister          PositionPersister
+	register           chan ClientSender
+	unregister         chan ClientSender
+	inputs             chan inputEvent
+	appearanceUpdates  chan appearanceUpdateRequest
+	stop               chan struct{}
+	done               chan struct{}
+	stopOnce           sync.Once
+	clients            map[string]ClientSender
+	persistDirty       map[string]struct{}
+	persistSeq         map[string]uint64
+	disconnectUser     chan disconnectRequest
 	simulationTick    <-chan time.Time
 	broadcastTick     <-chan time.Time
 	persistenceTick   <-chan time.Time
@@ -67,7 +72,7 @@ func NewHub() *Hub {
 	return NewHubWithSavedPositions(nil, nil)
 }
 
-func NewHubWithSavedPositions(loader SavedPositionLoader, persister PositionPersister) *Hub {
+func NewHubWithSavedPositions(loader SavedPlayerLoader, persister PositionPersister) *Hub {
 	simulationTicker := time.NewTicker(simulationInterval)
 	broadcastTicker := time.NewTicker(broadcastInterval)
 	persistenceTicker := time.NewTicker(persistenceInterval)
@@ -92,7 +97,7 @@ func NewHubWithSavedPositions(loader SavedPositionLoader, persister PositionPers
 
 func newHub(
 	world *game.World,
-	loadSavedPosition SavedPositionLoader,
+	loadSavedPlayer SavedPlayerLoader,
 	persister PositionPersister,
 	simulationTick <-chan time.Time,
 	broadcastTick <-chan time.Time,
@@ -102,11 +107,12 @@ func newHub(
 ) *Hub {
 	return &Hub{
 		world:             world,
-		loadSavedPosition: loadSavedPosition,
+		loadSavedPlayer:   loadSavedPlayer,
 		persister:         persister,
 		register:          make(chan ClientSender),
 		unregister:        make(chan ClientSender),
 		inputs:            make(chan inputEvent),
+		appearanceUpdates: make(chan appearanceUpdateRequest),
 		stop:              make(chan struct{}),
 		done:              make(chan struct{}),
 		clients:           map[string]ClientSender{},
@@ -161,6 +167,8 @@ func (h *Hub) Run() {
 				d.Drain()
 			}
 			close(req.done)
+		case req := <-h.appearanceUpdates:
+			h.applyAppearanceUpdate(req)
 		case <-h.stop:
 			for _, client := range h.clients {
 				h.submitFinalPosition(client.ID())
@@ -220,6 +228,21 @@ func (h *Hub) ApplyInput(client ClientSender, input game.InputState) bool {
 	}
 }
 
+func (h *Hub) UpdateAppearance(userID string, appearance game.Appearance) bool {
+	done := make(chan struct{})
+	select {
+	case h.appearanceUpdates <- appearanceUpdateRequest{
+		userID:     userID,
+		appearance: appearance,
+		done:       done,
+	}:
+		<-done
+		return true
+	case <-h.done:
+		return false
+	}
+}
+
 func (h *Hub) registerClient(client ClientSender) {
 	if existing, exists := h.clients[client.ID()]; exists && existing != client {
 		existing.CloseSend()
@@ -233,13 +256,46 @@ func (h *Hub) registerClient(client ClientSender) {
 }
 
 func (h *Hub) addPlayer(userID string) {
-	if h.loadSavedPosition != nil {
-		if lat, lng, ok := h.loadSavedPosition(userID); ok {
-			h.world.AddPlayerAt(userID, lat, lng)
+	if h.loadSavedPlayer != nil {
+		if state, ok := h.loadSavedPlayer(userID); ok {
+			lat, lng := state.Lat, state.Lng
+			if !state.HasPosition {
+				lat, lng = h.world.SpawnLatLng()
+			}
+			h.world.AddPlayerWithAppearance(userID, lat, lng, state.Appearance)
 			return
 		}
 	}
 	h.world.AddPlayer(userID)
+}
+
+func (h *Hub) applyAppearanceUpdate(req appearanceUpdateRequest) {
+	defer close(req.done)
+
+	if !h.world.HasPlayer(req.userID) {
+		return
+	}
+
+	changed, ok := h.world.UpdatePlayerAppearance(req.userID, req.appearance)
+	if !ok || !changed {
+		return
+	}
+
+	h.broadcastAppearanceChanged(req.userID, req.appearance)
+}
+
+func (h *Hub) broadcastAppearanceChanged(userID string, appearance game.Appearance) {
+	data, err := EncodeAppearanceChanged(userID, appearance)
+	if err != nil {
+		log.Printf("encode appearance changed failed: %v", err)
+		return
+	}
+
+	for _, client := range h.clients {
+		if ok := client.Send(data); !ok {
+			h.removeClient(client)
+		}
+	}
 }
 
 func (h *Hub) removeClient(client ClientSender) {

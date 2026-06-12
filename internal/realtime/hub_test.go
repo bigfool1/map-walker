@@ -93,11 +93,17 @@ func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
 }
 
 func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
-	loader := SavedPositionLoader(func(userID string) (float64, float64, bool) {
+	savedAppearance := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	loader := SavedPlayerLoader(func(userID string) (SavedPlayerLoad, bool) {
 		if userID != "alice" {
-			return 0, 0, false
+			return SavedPlayerLoad{}, false
 		}
-		return 31.5, 121.5, true
+		return SavedPlayerLoad{
+			Lat:         31.5,
+			Lng:         121.5,
+			HasPosition: true,
+			Appearance:  savedAppearance,
+		}, true
 	})
 
 	hub, _, _, _ := newTestHubWithLoader(loader, nil)
@@ -113,11 +119,19 @@ func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 	if snapshot.Players[0].Lat != 31.5 || snapshot.Players[0].Lng != 121.5 {
 		t.Fatalf("expected saved position, got %+v", snapshot.Players[0])
 	}
+	if snapshot.Players[0].Appearance != savedAppearance {
+		t.Fatalf("expected saved appearance, got %+v", snapshot.Players[0].Appearance)
+	}
 }
 
 func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
-	loader := SavedPositionLoader(func(userID string) (float64, float64, bool) {
-		return 31.99, 121.99, true
+	loader := SavedPlayerLoader(func(userID string) (SavedPlayerLoad, bool) {
+		return SavedPlayerLoad{
+			Lat:         31.99,
+			Lng:         121.99,
+			HasPosition: true,
+			Appearance:  game.Appearance{Color: "#000000", Shape: game.ShapeSquare},
+		}, true
 	})
 
 	hub, simulations, broadcasts, _ := newTestHubWithLoader(loader, nil)
@@ -291,7 +305,116 @@ func TestHubMethodsReturnAfterStop(t *testing.T) {
 	if hub.ApplyInput(client, game.InputState{Sequence: 1, Up: true}) {
 		t.Fatal("input should fail after stop")
 	}
+	if hub.UpdateAppearance("alice", game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}) {
+		t.Fatal("appearance update should fail after stop")
+	}
 	hub.Unregister(client)
+}
+
+func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveSnapshot(t, alice)
+	hub.Register(bob)
+	mustReceiveSnapshot(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
+	mustReceiveDelta(t, bob)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	if !hub.UpdateAppearance("alice", updated) {
+		t.Fatal("appearance update failed")
+	}
+
+	aliceMessage := mustReceiveAppearanceChanged(t, alice)
+	bobMessage := mustReceiveAppearanceChanged(t, bob)
+	if aliceMessage.PlayerID != "alice" || aliceMessage.Appearance != updated {
+		t.Fatalf("unexpected alice appearance message: %+v", aliceMessage)
+	}
+	if bobMessage != aliceMessage {
+		t.Fatalf("clients received different appearance messages: %+v %+v", aliceMessage, bobMessage)
+	}
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
+}
+
+func TestHubUpdateAppearanceUnchangedDoesNotBroadcast(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	hub.Register(alice)
+	snapshot := mustReceiveSnapshot(t, alice)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
+
+	if !hub.UpdateAppearance("alice", snapshot.Players[0].Appearance) {
+		t.Fatal("unchanged appearance update failed")
+	}
+	assertNoMessage(t, alice)
+}
+
+func TestHubUpdateAppearanceOfflineUserSucceedsWithoutBroadcast(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	hub.Register(alice)
+	mustReceiveSnapshot(t, alice)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, alice)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeTriangle}
+	if !hub.UpdateAppearance("offline-user", updated) {
+		t.Fatal("offline appearance update failed")
+	}
+	assertNoMessage(t, alice)
+}
+
+func TestHubReplacementRetainsInMemoryAppearance(t *testing.T) {
+	loader := SavedPlayerLoader(func(userID string) (SavedPlayerLoad, bool) {
+		return SavedPlayerLoad{
+			Lat:         31.99,
+			Lng:         121.99,
+			HasPosition: true,
+			Appearance:  game.Appearance{Color: "#000000", Shape: game.ShapeSquare},
+		}, true
+	})
+
+	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	old := NewTestClient("alice", 8)
+	replacement := NewTestClient("alice", 8)
+	hub.Register(old)
+	initial := mustReceiveSnapshot(t, old)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, old)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	if !hub.UpdateAppearance("alice", updated) {
+		t.Fatal("appearance update failed")
+	}
+	mustReceiveAppearanceChanged(t, old)
+
+	hub.Register(replacement)
+	snapshot := mustReceiveSnapshot(t, replacement)
+	if snapshot.Players[0].Appearance != updated {
+		t.Fatalf("replacement reloaded stale appearance: got %+v want %+v", snapshot.Players[0].Appearance, updated)
+	}
+	if snapshot.Players[0].Appearance == initial.Players[0].Appearance {
+		t.Fatalf("expected appearance to change before replacement: %+v", initial.Players[0].Appearance)
+	}
 }
 
 func TestHubDisconnectUserRemovesPlayer(t *testing.T) {
@@ -353,7 +476,7 @@ func newTestHub() (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 	return newTestHubWithLoader(nil, nil)
 }
 
-func newTestHubWithLoader(loader SavedPositionLoader, persister PositionPersister) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
+func newTestHubWithLoader(loader SavedPlayerLoader, persister PositionPersister) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 	simulations := make(chan time.Time, 8)
 	broadcasts := make(chan time.Time, 8)
 	persistence := make(chan time.Time, 8)
@@ -414,6 +537,19 @@ func mustReceiveSnapshot(t *testing.T, client *testClient) WorldSnapshotMessage 
 	}
 	if message.Type != MessageTypeWorldSnapshot {
 		t.Fatalf("expected snapshot, got %q", message.Type)
+	}
+	return message
+}
+
+func mustReceiveAppearanceChanged(t *testing.T, client *testClient) AppearanceChangedMessage {
+	t.Helper()
+	data := mustReceiveData(t, client)
+	var message AppearanceChangedMessage
+	if err := json.Unmarshal(data, &message); err != nil {
+		t.Fatalf("decode appearance changed failed: %v", err)
+	}
+	if message.Type != MessageTypeAppearanceChanged {
+		t.Fatalf("expected appearance changed, got %q", message.Type)
 	}
 	return message
 }

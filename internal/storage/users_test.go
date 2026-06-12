@@ -95,6 +95,70 @@ func TestSaveAndGetUserPosition(t *testing.T) {
 	}
 }
 
+func TestSavedPlayerLoader(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.CreateUser(User{
+		ID:                 "user-1",
+		Username:           "alice",
+		UsernameNormalized: "alice",
+		PasswordHash:       "hash",
+		CreatedAt:          time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create user failed: %v", err)
+	}
+	if err := db.SaveUserAppearance("user-1", Appearance{Color: "#ff6600", Shape: "triangle"}); err != nil {
+		t.Fatalf("save appearance failed: %v", err)
+	}
+	if err := db.SaveUserPosition("user-1", 31.5, 121.5); err != nil {
+		t.Fatalf("save position failed: %v", err)
+	}
+
+	loader := SavedPlayerLoader(db)
+	state, ok := loader("user-1")
+	if !ok {
+		t.Fatal("expected saved player state")
+	}
+	if !state.HasPosition || state.Lat != 31.5 || state.Lng != 121.5 {
+		t.Fatalf("unexpected position: %+v", state)
+	}
+	if state.Appearance.Color != "#ff6600" || state.Appearance.Shape != "triangle" {
+		t.Fatalf("unexpected appearance: %+v", state.Appearance)
+	}
+
+	if _, ok := loader("missing-user"); ok {
+		t.Fatal("expected missing user to have no saved state")
+	}
+}
+
+func TestSavedPlayerLoaderWithoutSavedPosition(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.CreateUser(User{
+		ID:                 "user-1",
+		Username:           "alice",
+		UsernameNormalized: "alice",
+		PasswordHash:       "hash",
+		CreatedAt:          time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create user failed: %v", err)
+	}
+	if err := db.SaveUserAppearance("user-1", Appearance{Color: "#ff6600", Shape: "diamond"}); err != nil {
+		t.Fatalf("save appearance failed: %v", err)
+	}
+
+	state, ok := SavedPlayerLoader(db)("user-1")
+	if !ok {
+		t.Fatal("expected saved player state")
+	}
+	if state.HasPosition {
+		t.Fatalf("expected no saved position: %+v", state)
+	}
+	if state.Appearance.Color != "#ff6600" || state.Appearance.Shape != "diamond" {
+		t.Fatalf("unexpected appearance: %+v", state.Appearance)
+	}
+}
+
 func TestSavedPositionLoader(t *testing.T) {
 	db := openTestDB(t)
 

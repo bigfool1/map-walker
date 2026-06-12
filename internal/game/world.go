@@ -82,6 +82,10 @@ func NewWorld(config Config) *World {
 	}
 }
 
+func (w *World) SpawnLatLng() (float64, float64) {
+	return w.config.SpawnLat, w.config.SpawnLng
+}
+
 func (w *World) AddPlayer(playerID string) bool {
 	return w.AddPlayerAt(playerID, w.config.SpawnLat, w.config.SpawnLng)
 }
