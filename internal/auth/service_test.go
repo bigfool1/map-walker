@@ -61,6 +61,9 @@ func TestRegisterLoginAndAuthenticate(t *testing.T) {
 	if user.Username != "Alice" {
 		t.Fatalf("unexpected user: %+v", user)
 	}
+	if user.Appearance.Color != storage.DefaultAppearanceColor || user.Appearance.Shape != storage.DefaultAppearanceShape {
+		t.Fatalf("unexpected default appearance: %+v", user.Appearance)
+	}
 
 	_, _, err = svc.Register("alice", "another-password")
 	if err != ErrUsernameUnavailable {
@@ -82,12 +85,50 @@ func TestRegisterLoginAndAuthenticate(t *testing.T) {
 	if authenticated.Username != "Alice" {
 		t.Fatalf("unexpected authenticated user: %+v", authenticated)
 	}
+	if authenticated.Appearance.Color != storage.DefaultAppearanceColor || authenticated.Appearance.Shape != storage.DefaultAppearanceShape {
+		t.Fatalf("unexpected authenticated appearance: %+v", authenticated.Appearance)
+	}
 
 	if err := svc.Logout(token); err != nil {
 		t.Fatalf("logout failed: %v", err)
 	}
 	if _, err := svc.AuthenticateSession(token); err != ErrUnauthenticated {
 		t.Fatalf("expected unauthenticated after logout, got %v", err)
+	}
+}
+
+func TestAuthenticateReturnsSavedAppearance(t *testing.T) {
+	db, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open test db failed: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	svc := NewService(db)
+
+	_, user, err := svc.Register("Bob", "password123")
+	if err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	custom := storage.Appearance{Color: "#ff6600", Shape: "triangle"}
+	if err := db.SaveUserAppearance(user.ID, custom); err != nil {
+		t.Fatalf("save appearance failed: %v", err)
+	}
+
+	token, loginUser, err := svc.Login("Bob", "password123")
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	if loginUser.Appearance != custom {
+		t.Fatalf("login appearance = %+v, want %+v", loginUser.Appearance, custom)
+	}
+
+	authenticated, err := svc.AuthenticateSession(token)
+	if err != nil {
+		t.Fatalf("authenticate failed: %v", err)
+	}
+	if authenticated.Appearance != custom {
+		t.Fatalf("authenticated appearance = %+v, want %+v", authenticated.Appearance, custom)
 	}
 }
 

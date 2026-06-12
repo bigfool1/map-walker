@@ -15,8 +15,9 @@ type Service struct {
 }
 
 type User struct {
-	ID       string
-	Username string
+	ID         string
+	Username   string
+	Appearance storage.Appearance
 }
 
 func NewService(db *storage.DB) *Service {
@@ -59,7 +60,12 @@ func (s *Service) Register(username, password string) (sessionToken string, user
 		return "", User{}, err
 	}
 
-	return token, User{ID: userID, Username: username}, nil
+	record, err := s.db.GetUserByID(userID)
+	if err != nil {
+		return "", User{}, err
+	}
+
+	return token, authUserFromRecord(record), nil
 }
 
 func (s *Service) Login(username, password string) (sessionToken string, user User, err error) {
@@ -86,7 +92,7 @@ func (s *Service) Login(username, password string) (sessionToken string, user Us
 		return "", User{}, err
 	}
 
-	return token, User{ID: record.ID, Username: record.Username}, nil
+	return token, authUserFromRecord(record), nil
 }
 
 func (s *Service) Logout(sessionToken string) error {
@@ -124,7 +130,15 @@ func (s *Service) AuthenticateSession(sessionToken string) (User, error) {
 		return User{}, err
 	}
 
-	return User{ID: record.ID, Username: record.Username}, nil
+	return authUserFromRecord(record), nil
+}
+
+func authUserFromRecord(record storage.User) User {
+	return User{
+		ID:         record.ID,
+		Username:   record.Username,
+		Appearance: record.Appearance,
+	}
 }
 
 func (s *Service) createSession(userID string) (string, error) {

@@ -11,19 +11,21 @@ import (
 )
 
 type User struct {
-	ID                  string
-	Username            string
-	UsernameNormalized  string
-	PasswordHash        string
-	CreatedAt           time.Time
-	LastLat             sql.NullFloat64
-	LastLng             sql.NullFloat64
+	ID                 string
+	Username           string
+	UsernameNormalized string
+	PasswordHash       string
+	CreatedAt          time.Time
+	LastLat            sql.NullFloat64
+	LastLng            sql.NullFloat64
+	Appearance         Appearance
 }
 
 func (db *DB) CreateUser(user User) error {
+	appearance := appearanceOrDefault(user.Appearance)
 	_, err := db.Exec(
-		`INSERT INTO users (id, username, username_normalized, password_hash, created_at, last_lat, last_lng)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID,
 		user.Username,
 		user.UsernameNormalized,
@@ -31,6 +33,8 @@ func (db *DB) CreateUser(user User) error {
 		formatTime(user.CreatedAt),
 		nullFloat(user.LastLat),
 		nullFloat(user.LastLng),
+		appearance.Color,
+		appearance.Shape,
 	)
 	if err != nil && isUniqueViolation(err) {
 		return ErrDuplicateUsername
@@ -43,7 +47,7 @@ func (db *DB) CreateUser(user User) error {
 
 func (db *DB) GetUserByNormalizedUsername(normalized string) (User, error) {
 	row := db.QueryRow(
-		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng
+		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape
 		 FROM users WHERE username_normalized = ?`,
 		normalized,
 	)
@@ -52,11 +56,31 @@ func (db *DB) GetUserByNormalizedUsername(normalized string) (User, error) {
 
 func (db *DB) GetUserByID(id string) (User, error) {
 	row := db.QueryRow(
-		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng
+		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape
 		 FROM users WHERE id = ?`,
 		id,
 	)
 	return scanUser(row)
+}
+
+func (db *DB) SaveUserAppearance(userID string, appearance Appearance) error {
+	result, err := db.Exec(
+		`UPDATE users SET appearance_color = ?, appearance_shape = ? WHERE id = ?`,
+		appearance.Color,
+		appearance.Shape,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update user appearance: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (db *DB) SaveUserPosition(userID string, lat, lng float64) error {
@@ -119,6 +143,8 @@ func scanUser(row *sql.Row) (User, error) {
 		&createdAt,
 		&lastLat,
 		&lastLng,
+		&user.Appearance.Color,
+		&user.Appearance.Shape,
 	)
 	if err == sql.ErrNoRows {
 		return User{}, ErrNotFound

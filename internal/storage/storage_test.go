@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -46,8 +47,56 @@ func TestOpenIsIdempotent(t *testing.T) {
 	defer db.Close()
 
 	versions := mustAppliedVersions(t, db.DB)
-	if len(versions) != 1 || versions[0] != 1 {
-		t.Fatalf("expected migration 1 applied once, got %v", versions)
+	if len(versions) != 2 || versions[0] != 1 || versions[1] != 2 {
+		t.Fatalf("expected migrations [1 2], got %v", versions)
+	}
+}
+
+func TestMigration002BackfillsExistingUsers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+
+	sqlDB, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer sqlDB.Close()
+
+	initial, err := embeddedMigrations.ReadFile("migrations/001_initial.sql")
+	if err != nil {
+		t.Fatalf("read initial migration failed: %v", err)
+	}
+
+	testFS := fstest.MapFS{
+		"migrations/001_initial.sql": {Data: initial},
+	}
+	if err := applyMigrations(sqlDB, testFS, "migrations"); err != nil {
+		t.Fatalf("apply initial migration failed: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := sqlDB.Exec(
+		`INSERT INTO users (id, username, username_normalized, password_hash, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		"legacy-user",
+		"alice",
+		"alice",
+		"hash",
+		now,
+	); err != nil {
+		t.Fatalf("insert legacy user failed: %v", err)
+	}
+
+	if err := applyMigrations(sqlDB, embeddedMigrations, "migrations"); err != nil {
+		t.Fatalf("apply appearance migration failed: %v", err)
+	}
+
+	db := &DB{DB: sqlDB}
+	user, err := db.GetUserByID("legacy-user")
+	if err != nil {
+		t.Fatalf("get legacy user failed: %v", err)
+	}
+	if user.Appearance.Color != DefaultAppearanceColor || user.Appearance.Shape != DefaultAppearanceShape {
+		t.Fatalf("unexpected backfilled appearance: %+v", user.Appearance)
 	}
 }
 

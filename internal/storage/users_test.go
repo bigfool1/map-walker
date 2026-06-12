@@ -125,6 +125,67 @@ func TestSavedPositionLoader(t *testing.T) {
 	}
 }
 
+func TestNewUserHasDefaultAppearance(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.CreateUser(User{
+		ID:                 "user-1",
+		Username:           "alice",
+		UsernameNormalized: "alice",
+		PasswordHash:       "hash",
+		CreatedAt:          time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create user failed: %v", err)
+	}
+
+	user, err := db.GetUserByID("user-1")
+	if err != nil {
+		t.Fatalf("get user failed: %v", err)
+	}
+	if user.Appearance.Color != DefaultAppearanceColor || user.Appearance.Shape != DefaultAppearanceShape {
+		t.Fatalf("unexpected default appearance: %+v", user.Appearance)
+	}
+}
+
+func TestSaveAndReloadUserAppearance(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.CreateUser(User{
+		ID:                 "user-1",
+		Username:           "alice",
+		UsernameNormalized: "alice",
+		PasswordHash:       "hash",
+		CreatedAt:          time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create user failed: %v", err)
+	}
+
+	custom := Appearance{Color: "#ff6600", Shape: "diamond"}
+	if err := db.SaveUserAppearance("user-1", custom); err != nil {
+		t.Fatalf("save appearance failed: %v", err)
+	}
+
+	user, err := db.GetUserByID("user-1")
+	if err != nil {
+		t.Fatalf("get user failed: %v", err)
+	}
+	if user.Appearance != custom {
+		t.Fatalf("unexpected appearance: %+v", user.Appearance)
+	}
+}
+
+func TestSaveUserAppearanceMissingUser(t *testing.T) {
+	db := openTestDB(t)
+
+	err := db.SaveUserAppearance("missing-user", Appearance{
+		Color: "#ff6600",
+		Shape: "diamond",
+	})
+	if err != ErrNotFound {
+		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
 func TestSessionCreateGetDelete(t *testing.T) {
 	db := openTestDB(t)
 
