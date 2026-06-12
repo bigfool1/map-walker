@@ -7,8 +7,9 @@
 - WebSocket library: `github.com/coder/websocket`.
 - Hub fixes: slow clients are fully disconnected (context cancel + socket close); duplicate `playerId` reconnects replace the old connection without removing the new one.
 - Connection reliability: protocol-level heartbeat per client, unified connection lifecycle, frontend auto-reconnect with capped exponential backoff, and Chinese connection status.
-- Browser frontend implemented with locally served Leaflet, Gaode map tiles, keyboard controls, mobile direction pad, centered auth card, and account control.
-- Verification command: `go test ./...`.
+- Browser frontend implemented with Leaflet (CDN), Gaode map tiles, keyboard controls, mobile direction pad, centered auth card, account menu, and appearance editor.
+- Player appearance sync complete: persistent marker color/shape, CSS `divIcon` markers, `PUT /api/appearance`, and realtime `appearance_changed` broadcasts.
+- Verification command: `go test ./...` and `go vet ./...`.
 - Manual verification target: `http://localhost:8080` (`go run ./cmd/map-walker`).
 
 ## Account and Position Persistence Phase (Complete)
@@ -57,17 +58,62 @@
 - Logout resets the card to login mode regardless of which mode was last used.
 - Intentional logout prevents auto-reconnect.
 
+## Player Appearance Sync Phase (Complete)
+
+Design and plan: `docs/superpowers/specs/2026-06-12-player-appearance-sync-design.md`,
+`docs/superpowers/plans/2026-06-12-player-appearance-sync.md`.
+
+### Storage and auth
+
+- Migration `002_appearance.sql` adds non-null `users.appearance_color` and
+  `users.appearance_shape` with defaults `#3388ff` / `circle`.
+- `auth.Service` and session responses carry stored appearance.
+- `PUT /api/appearance` validates `#RRGGBB` colors and four shapes, normalizes
+  color to lowercase, persists first, then waits for Hub application.
+- Hub unavailable after a successful save returns `503`; the database value is
+  not rolled back.
+
+### World state and protocol
+
+- `game.PlayerState` in `world_snapshot` includes `id`, `username`, `lat`,
+  `lng`, and nested `appearance`.
+- `players_delta` remains position-only.
+- Saved appearance changes broadcast `appearance_changed` with `playerId` and
+  complete appearance.
+- Online Hub updates apply appearance without touching movement deltas.
+- First connection loads persisted position and appearance; same-account
+  replacement retains in-memory position, appearance, and username.
+
+### Frontend
+
+- Markers use `L.divIcon` with CSS shapes (`circle`, `square`, `diamond`,
+  `triangle`) and authoritative color.
+- Snapshot creates or refreshes complete marker state; deltas move markers only;
+  `appearance_changed` updates icon only.
+- Hover tooltips show `You` for the current user and other players' usernames.
+- Upper-right account trigger opens a menu with appearance editing and logout.
+- Editor supports local preview, shape selection, native color input, save,
+  cancel, and error display; edits are not sent until save.
+- Registration, login, session bootstrap, snapshot, and appearance broadcasts
+  initialize or refresh the authoritative appearance shown in the account UI.
+
+### Verification
+
+- Automated: `go test ./...`, `go vet ./...`.
+- Manual: two-window appearance sync, movement after appearance changes,
+  refresh/reconnect restoration, account menu interaction, save/cancel/retry.
+
 ## Project Layout
 
 ```text
 cmd/map-walker/main.go       — entrypoint, graceful shutdown
-internal/game/               — in-memory player positions, Step() returns moved IDs
+internal/game/               — player positions, appearance, Step() returns moved IDs
 internal/realtime/           — Hub actor, WebSocket client, message types, persistence interface
-internal/server/             — HTTP routes, auth endpoints, WebSocket upgrade, static files
-internal/auth/               — user registration/login, bcrypt, session tokens
-internal/storage/            — SQLite/MySQL, forward-only migrations, user/session/position persistence
-internal/storage/migrations/ — numbered SQL migration files
-web/                         — Leaflet UI, auth card, app.js, styles, local assets
+internal/server/             — HTTP routes, auth/appearance endpoints, WebSocket upgrade, static files
+internal/auth/               — user registration/login, bcrypt, session tokens, appearance validation
+internal/storage/            — SQLite/MySQL, forward-only migrations, user/session/position/appearance persistence
+internal/storage/migrations/ — numbered SQL migration files (`001` initial, `002` appearance)
+web/                         — Leaflet UI, auth card, account menu, appearance editor, app.js, styles
 ```
 
 ## Database
@@ -78,12 +124,14 @@ web/                         — Leaflet UI, auth card, app.js, styles, local as
 - Tables: `users`, `sessions`, `schema_migrations`.
 - `users.last_lat` and `users.last_lng` store the last known position for
   restoration on reconnect.
+- `users.appearance_color` and `users.appearance_shape` store the last saved
+  marker appearance.
 
 ## Known Limitations
 
 - No AOI (Area of Interest), spatial indexing, or distance-based filtering —
-  all players are in a single flat world visible to everyone. AOI is the next
-  independent phase.
+  all players are in a single flat world visible to everyone. Room and AOI are
+  the next independent phases.
 - No password recovery, email verification, or OAuth.
 - Session expiry (30 days) does not proactively disconnect active WebSockets;
   the next reconnect must re-authenticate.
@@ -91,8 +139,10 @@ web/                         — Leaflet UI, auth card, app.js, styles, local as
   incomplete if that deadline is exceeded.
 - Map tiles depend on Gaode (`webrd0*.is.autonavi.com`); availability follows
   that provider.
-- Leaflet marker images are served from `web/images/`.
+- Leaflet is loaded from the unpkg CDN in `web/index.html`.
 - No server-side input queue — only the latest input state is applied per tick.
+- If the Hub is unavailable after a successful appearance save, online World
+  state may lag the database until the user reconnects.
 
 ## Authoritative Movement Phase
 

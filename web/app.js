@@ -596,7 +596,9 @@ function bindKeyboardControls() {
     if (isEditingInput()) {
       return;
     }
-    const direction = directions[event.key] || directions[event.key.toLowerCase()];
+    const key = event.key;
+    if (!key) { return; }
+    const direction = directions[key] || directions[key.toLowerCase()];
     if (!direction) {
       return;
     }
@@ -608,7 +610,9 @@ function bindKeyboardControls() {
     if (isEditingInput()) {
       return;
     }
-    const direction = directions[event.key] || directions[event.key.toLowerCase()];
+    const key = event.key;
+    if (!key) { return; }
+    const direction = directions[key] || directions[key.toLowerCase()];
     if (!direction) {
       return;
     }
