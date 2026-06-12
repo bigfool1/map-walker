@@ -7,7 +7,7 @@
 - WebSocket library: `github.com/coder/websocket`.
 - Hub fixes: slow clients are fully disconnected (context cancel + socket close); duplicate `playerId` reconnects replace the old connection without removing the new one.
 - Connection reliability: protocol-level heartbeat per client, unified connection lifecycle, frontend auto-reconnect with capped exponential backoff, and Chinese connection status.
-- Browser frontend implemented with locally served Leaflet, Gaode map tiles, keyboard controls, mobile direction pad, and centered auth card.
+- Browser frontend implemented with locally served Leaflet, Gaode map tiles, keyboard controls, mobile direction pad, centered auth card, and account control.
 - Verification command: `go test ./...`.
 - Manual verification target: `http://localhost:8080` (`go run ./cmd/map-walker`).
 
@@ -45,13 +45,17 @@
 
 ### Authentication UI
 
-- Unauthenticated visitors see a centered login/register card over the map.
+- Unauthenticated visitors see a centered login/register card over the map;
+  the joystick is hidden and WASD/arrow keys are not captured, allowing normal
+  typing in the form fields.
 - Login and registration toggle within one card without page navigation.
-- On success the card hides, an upper-right account control shows the username,
-  and the WebSocket connects.
+- On success the card hides, the joystick reappears, an upper-right account
+  control shows the username, and the WebSocket connects.
 - Page refresh restores the session from the cookie.
 - After max reconnect retries with persistent failure, the session is re-checked;
   if expired the auth card reappears.
+- Logout resets the card to login mode regardless of which mode was last used.
+- Intentional logout prevents auto-reconnect.
 
 ## Project Layout
 
