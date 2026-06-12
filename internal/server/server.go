@@ -28,6 +28,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/logout", s.handleLogout)
 	mux.HandleFunc("/api/session", s.handleSession)
+	mux.HandleFunc("/api/appearance", s.handleAppearance)
 	mux.HandleFunc("/ws", s.handleWebSocket)
 	mux.Handle("/", s.static)
 	return mux

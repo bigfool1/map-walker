@@ -133,6 +133,10 @@ func (s *Service) AuthenticateSession(sessionToken string) (User, error) {
 	return authUserFromRecord(record), nil
 }
 
+func (s *Service) SaveAppearance(userID string, appearance storage.Appearance) error {
+	return s.db.SaveUserAppearance(userID, appearance)
+}
+
 func authUserFromRecord(record storage.User) User {
 	return User{
 		ID:         record.ID,

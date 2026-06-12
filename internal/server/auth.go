@@ -15,8 +15,17 @@ type credentialsRequest struct {
 }
 
 type sessionResponse struct {
-	UserID   string `json:"userId"`
-	Username string `json:"username"`
+	UserID     string             `json:"userId"`
+	Username   string             `json:"username"`
+	Appearance appearanceResponse `json:"appearance"`
+}
+
+func sessionResponseFromUser(user auth.User) sessionResponse {
+	return sessionResponse{
+		UserID:     user.ID,
+		Username:   user.Username,
+		Appearance: appearanceResponseFromUser(user.Appearance),
+	}
 }
 
 type errorResponse struct {
@@ -55,7 +64,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setSessionCookie(w, r, token)
-	writeJSON(w, http.StatusOK, sessionResponse{UserID: user.ID, Username: user.Username})
+	writeJSON(w, http.StatusOK, sessionResponseFromUser(user))
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +91,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setSessionCookie(w, r, token)
-	writeJSON(w, http.StatusOK, sessionResponse{UserID: user.ID, Username: user.Username})
+	writeJSON(w, http.StatusOK, sessionResponseFromUser(user))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +134,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, sessionResponse{UserID: user.ID, Username: user.Username})
+	writeJSON(w, http.StatusOK, sessionResponseFromUser(user))
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
