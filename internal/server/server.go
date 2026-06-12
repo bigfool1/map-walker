@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"map-walker/internal/auth"
 	"map-walker/internal/realtime"
 
 	"github.com/coder/websocket"
@@ -11,12 +12,14 @@ import (
 
 type Server struct {
 	hub    *realtime.Hub
+	auth   *auth.Service
 	static http.Handler
 }
 
-func New(hub *realtime.Hub) *Server {
+func New(hub *realtime.Hub, authService *auth.Service) *Server {
 	return &Server{
 		hub:    hub,
+		auth:   authService,
 		static: http.FileServer(http.Dir("web")),
 	}
 }
@@ -24,6 +27,10 @@ func New(hub *realtime.Hub) *Server {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/api/register", s.handleRegister)
+	mux.HandleFunc("/api/login", s.handleLogin)
+	mux.HandleFunc("/api/logout", s.handleLogout)
+	mux.HandleFunc("/api/session", s.handleSession)
 	mux.HandleFunc("/ws", s.handleWebSocket)
 	mux.Handle("/", s.static)
 	return mux

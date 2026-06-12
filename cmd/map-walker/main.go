@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"map-walker/internal/auth"
 	"map-walker/internal/realtime"
 	"map-walker/internal/server"
 	"map-walker/internal/storage"
@@ -27,7 +28,7 @@ func main() {
 	hub := realtime.NewHub()
 	go hub.Run()
 
-	srv := server.New(hub)
+	srv := server.New(hub, auth.NewService(db))
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	log.Printf("map-walker listening on http://%s", addr)
