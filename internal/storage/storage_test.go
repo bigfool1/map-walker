@@ -14,7 +14,7 @@ func TestOpenCreatesDatabaseAndSchema(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "map-walker.db")
 
-	db, err := Open(path)
+	db, err := OpenSQLite(path)
 	if err != nil {
 		t.Fatalf("open failed: %v", err)
 	}
@@ -33,13 +33,13 @@ func TestOpenIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "map-walker.db")
 
-	db, err := Open(path)
+	db, err := OpenSQLite(path)
 	if err != nil {
 		t.Fatalf("first open failed: %v", err)
 	}
 	db.Close()
 
-	db, err = Open(path)
+	db, err = OpenSQLite(path)
 	if err != nil {
 		t.Fatalf("second open failed: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestOpenCreatesDataDirectory(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "data", "map-walker.db")
 
-	db, err := Open(path)
+	db, err := OpenSQLite(path)
 	if err != nil {
 		t.Fatalf("open failed: %v", err)
 	}

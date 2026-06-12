@@ -14,10 +14,11 @@ import (
 func main() {
 	host := flag.String("host", "0.0.0.0", "监听地址")
 	port := flag.Int("port", 8080, "监听端口")
-	dbPath := flag.String("db", storage.DefaultDBPath, "SQLite 数据库路径")
+	dbDriver := flag.String("db-driver", "sqlite", "数据库驱动 (sqlite / mysql)")
+	dbDSN := flag.String("db-dsn", storage.DefaultDBPath, "数据库 DSN (SQLite 文件路径 或 MySQL user:pass@tcp(host:port)/dbname)")
 	flag.Parse()
 
-	db, err := storage.Open(*dbPath)
+	db, err := storage.Open(*dbDriver, *dbDSN)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}

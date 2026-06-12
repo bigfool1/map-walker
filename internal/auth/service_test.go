@@ -11,7 +11,7 @@ import (
 
 func openTestService(t *testing.T) *Service {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open test db failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 }
 
 func TestAuthenticateRejectsExpiredSession(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open test db failed: %v", err)
 	}

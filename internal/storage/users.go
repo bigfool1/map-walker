@@ -2,9 +2,12 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 type User struct {
@@ -123,7 +126,16 @@ func scanUser(row *sql.Row) (User, error) {
 }
 
 func isUniqueViolation(err error) bool {
-	return strings.Contains(err.Error(), "UNIQUE constraint failed")
+	// SQLite
+	if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return true
+	}
+	// MySQL ER_DUP_ENTRY
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		return true
+	}
+	return false
 }
 
 func formatTime(value time.Time) string {
