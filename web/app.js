@@ -76,6 +76,7 @@ function showAuthCard() {
   resetAuthMode();
   document.getElementById("auth-card").style.display = "";
   document.getElementById("status").style.display = "none";
+  document.querySelector(".joystick").style.display = "none";
   document.getElementById("auth-error").textContent = "";
 }
 
@@ -90,6 +91,7 @@ function resetAuthMode() {
 function hideAuthCard() {
   document.getElementById("auth-card").style.display = "none";
   document.getElementById("status").style.display = "";
+  document.querySelector(".joystick").style.display = "";
 }
 
 function showAccountControl() {
@@ -337,6 +339,9 @@ function bindKeyboardControls() {
   };
 
   window.addEventListener("keydown", (event) => {
+    if (isEditingInput()) {
+      return;
+    }
     const direction = directions[event.key] || directions[event.key.toLowerCase()];
     if (!direction) {
       return;
@@ -346,6 +351,9 @@ function bindKeyboardControls() {
   });
 
   window.addEventListener("keyup", (event) => {
+    if (isEditingInput()) {
+      return;
+    }
     const direction = directions[event.key] || directions[event.key.toLowerCase()];
     if (!direction) {
       return;
@@ -353,6 +361,15 @@ function bindKeyboardControls() {
     event.preventDefault();
     setDirection(direction, false);
   });
+}
+
+function isEditingInput() {
+  const el = document.activeElement;
+  if (!el) {
+    return false;
+  }
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
 }
 
 function setJoystickDirections(up, down, left, right) {
