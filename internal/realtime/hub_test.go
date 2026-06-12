@@ -92,6 +92,59 @@ func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
 	}
 }
 
+func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
+	loader := SavedPositionLoader(func(userID string) (float64, float64, bool) {
+		if userID != "alice" {
+			return 0, 0, false
+		}
+		return 31.5, 121.5, true
+	})
+
+	hub, _, _ := newTestHubWithLoader(loader)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	hub.Register(alice)
+	snapshot := mustReceiveSnapshot(t, alice)
+	if len(snapshot.Players) != 1 {
+		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	}
+	if snapshot.Players[0].Lat != 31.5 || snapshot.Players[0].Lng != 121.5 {
+		t.Fatalf("expected saved position, got %+v", snapshot.Players[0])
+	}
+}
+
+func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
+	loader := SavedPositionLoader(func(userID string) (float64, float64, bool) {
+		return 31.99, 121.99, true
+	})
+
+	hub, simulations, broadcasts := newTestHubWithLoader(loader)
+	go hub.Run()
+	defer hub.Stop()
+
+	old := NewTestClient("alice", 8)
+	replacement := NewTestClient("alice", 8)
+	hub.Register(old)
+	mustReceiveSnapshot(t, old)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, old)
+
+	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, old)
+	broadcasts <- time.Now()
+	moved := mustReceiveDelta(t, old)
+	movedLng := moved.Players[0].Lng
+
+	hub.Register(replacement)
+	snapshot := mustReceiveSnapshot(t, replacement)
+	if snapshot.Players[0].Lng != movedLng {
+		t.Fatalf("replacement reloaded stale saved position: got %v want %v", snapshot.Players[0].Lng, movedLng)
+	}
+}
+
 func TestHubReplacementRetainsInMemoryPosition(t *testing.T) {
 	hub, simulations, broadcasts := newTestHub()
 	go hub.Run()
@@ -242,10 +295,14 @@ func TestHubMethodsReturnAfterStop(t *testing.T) {
 }
 
 func newTestHub() (*Hub, chan time.Time, chan time.Time) {
+	return newTestHubWithLoader(nil)
+}
+
+func newTestHubWithLoader(loader SavedPositionLoader) (*Hub, chan time.Time, chan time.Time) {
 	simulations := make(chan time.Time, 8)
 	broadcasts := make(chan time.Time, 8)
 	world := game.NewWorld(testWorldConfig())
-	hub := newHub(world, simulations, broadcasts, nil, func() {})
+	hub := newHub(world, loader, simulations, broadcasts, nil, func() {})
 	return hub, simulations, broadcasts
 }
 

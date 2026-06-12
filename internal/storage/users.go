@@ -97,6 +97,16 @@ func (db *DB) GetUserPosition(userID string) (lat, lng float64, ok bool, err err
 	return lastLat.Float64, lastLng.Float64, true, nil
 }
 
+func SavedPositionLoader(db *DB) func(userID string) (lat, lng float64, ok bool) {
+	return func(userID string) (float64, float64, bool) {
+		lat, lng, ok, err := db.GetUserPosition(userID)
+		if err != nil || !ok {
+			return 0, 0, false
+		}
+		return lat, lng, true
+	}
+}
+
 func scanUser(row *sql.Row) (User, error) {
 	var user User
 	var createdAt string

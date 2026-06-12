@@ -6,6 +6,22 @@ import (
 	"time"
 )
 
+func TestWorldAddPlayerAtUsesExplicitPosition(t *testing.T) {
+	world := NewWorld(testConfig())
+
+	if added := world.AddPlayerAt("alice", 31.5, 121.5); !added {
+		t.Fatal("expected alice to be added")
+	}
+
+	snapshot := world.Snapshot()
+	if len(snapshot.Players) != 1 {
+		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
+	}
+	if snapshot.Players[0] != (PlayerPosition{ID: "alice", Lat: 31.5, Lng: 121.5}) {
+		t.Fatalf("unexpected position: %+v", snapshot.Players[0])
+	}
+}
+
 func TestWorldAddPlayerUsesConfiguredSpawn(t *testing.T) {
 	world := NewWorld(Config{
 		SpawnLat:             31.2304,

@@ -95,6 +95,36 @@ func TestSaveAndGetUserPosition(t *testing.T) {
 	}
 }
 
+func TestSavedPositionLoader(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.CreateUser(User{
+		ID:                 "user-1",
+		Username:           "alice",
+		UsernameNormalized: "alice",
+		PasswordHash:       "hash",
+		CreatedAt:          time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create user failed: %v", err)
+	}
+	if err := db.SaveUserPosition("user-1", 31.5, 121.5); err != nil {
+		t.Fatalf("save position failed: %v", err)
+	}
+
+	loader := SavedPositionLoader(db)
+	lat, lng, ok := loader("user-1")
+	if !ok {
+		t.Fatal("expected saved position")
+	}
+	if lat != 31.5 || lng != 121.5 {
+		t.Fatalf("unexpected loaded position: %v %v", lat, lng)
+	}
+
+	if _, _, ok := loader("missing-user"); ok {
+		t.Fatal("expected missing user to have no saved position")
+	}
+}
+
 func TestSessionCreateGetDelete(t *testing.T) {
 	db := openTestDB(t)
 

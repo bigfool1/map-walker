@@ -25,7 +25,7 @@ func main() {
 	}
 	defer db.Close()
 
-	hub := realtime.NewHub()
+	hub := realtime.NewHubWithSavedPositions(storage.SavedPositionLoader(db))
 	go hub.Run()
 
 	srv := server.New(hub, auth.NewService(db))

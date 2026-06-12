@@ -75,6 +75,10 @@ func NewWorld(config Config) *World {
 }
 
 func (w *World) AddPlayer(playerID string) bool {
+	return w.AddPlayerAt(playerID, w.config.SpawnLat, w.config.SpawnLng)
+}
+
+func (w *World) AddPlayerAt(playerID string, lat, lng float64) bool {
 	if _, exists := w.players[playerID]; exists {
 		return false
 	}
@@ -82,13 +86,18 @@ func (w *World) AddPlayer(playerID string) bool {
 	w.players[playerID] = &player{
 		position: PlayerPosition{
 			ID:  playerID,
-			Lat: w.config.SpawnLat,
-			Lng: w.config.SpawnLng,
+			Lat: lat,
+			Lng: lng,
 		},
 	}
 	w.dirtyPlayerIDs[playerID] = struct{}{}
 	delete(w.removedPlayerIDs, playerID)
 	return true
+}
+
+func (w *World) HasPlayer(playerID string) bool {
+	_, exists := w.players[playerID]
+	return exists
 }
 
 func (w *World) RemovePlayer(playerID string) bool {

@@ -25,9 +25,12 @@ type inputEvent struct {
 	input  game.InputState
 }
 
+type SavedPositionLoader func(userID string) (lat, lng float64, ok bool)
+
 type Hub struct {
-	world          *game.World
-	register       chan ClientSender
+	world              *game.World
+	loadSavedPosition  SavedPositionLoader
+	register           chan ClientSender
 	unregister     chan ClientSender
 	inputs         chan inputEvent
 	stop           chan struct{}
@@ -50,12 +53,17 @@ type intervalStats struct {
 }
 
 func NewHub() *Hub {
+	return NewHubWithSavedPositions(nil)
+}
+
+func NewHubWithSavedPositions(loader SavedPositionLoader) *Hub {
 	simulationTicker := time.NewTicker(simulationInterval)
 	broadcastTicker := time.NewTicker(broadcastInterval)
 	statsTicker := time.NewTicker(statsInterval)
 
 	return newHub(
 		game.NewWorld(game.DefaultConfig()),
+		loader,
 		simulationTicker.C,
 		broadcastTicker.C,
 		statsTicker.C,
@@ -69,14 +77,16 @@ func NewHub() *Hub {
 
 func newHub(
 	world *game.World,
+	loadSavedPosition SavedPositionLoader,
 	simulationTick <-chan time.Time,
 	broadcastTick <-chan time.Time,
 	statsTick <-chan time.Time,
 	stopTickers func(),
 ) *Hub {
 	return &Hub{
-		world:          world,
-		register:       make(chan ClientSender),
+		world:             world,
+		loadSavedPosition: loadSavedPosition,
+		register:          make(chan ClientSender),
 		unregister:     make(chan ClientSender),
 		inputs:         make(chan inputEvent),
 		stop:           make(chan struct{}),
@@ -161,12 +171,22 @@ func (h *Hub) registerClient(client ClientSender) {
 	if existing, exists := h.clients[client.ID()]; exists && existing != client {
 		existing.CloseSend()
 		h.world.ResetInput(client.ID())
-	} else {
-		h.world.AddPlayer(client.ID())
+	} else if !h.world.HasPlayer(client.ID()) {
+		h.addPlayer(client.ID())
 	}
 
 	h.clients[client.ID()] = client
 	h.sendSnapshot(client)
+}
+
+func (h *Hub) addPlayer(userID string) {
+	if h.loadSavedPosition != nil {
+		if lat, lng, ok := h.loadSavedPosition(userID); ok {
+			h.world.AddPlayerAt(userID, lat, lng)
+			return
+		}
+	}
+	h.world.AddPlayer(userID)
 }
 
 func (h *Hub) removeClient(client ClientSender) {
