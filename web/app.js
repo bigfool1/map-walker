@@ -73,9 +73,18 @@ function showAuthCard() {
   currentUserId = null;
   currentUsername = null;
   hideAccountControl();
+  resetAuthMode();
   document.getElementById("auth-card").style.display = "";
   document.getElementById("status").style.display = "none";
   document.getElementById("auth-error").textContent = "";
+}
+
+function resetAuthMode() {
+  authMode = "login";
+  document.getElementById("auth-title").textContent = "登录";
+  document.getElementById("auth-submit").textContent = "登录";
+  document.getElementById("auth-toggle-text").textContent = "没有账号？";
+  document.getElementById("auth-toggle-link").textContent = "注册";
 }
 
 function hideAuthCard() {

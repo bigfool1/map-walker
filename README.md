@@ -1,49 +1,57 @@
 # Map Walker
 
 A small server-authoritative multiplayer movement demo built with Go and
-Leaflet. Browsers send keyboard or touch input; the Go server owns player
-positions, simulates movement at 20 Hz, and broadcasts changed players at 10 Hz.
+Leaflet. Browsers register an account, then send keyboard or touch input; the Go
+server owns player positions, simulates movement at 20 Hz, broadcasts changed
+players at 10 Hz, and persists positions to SQLite every 5 seconds.
 
 ## Quick Start
 
 ```bash
 go run ./cmd/map-walker
-# open http://localhost:8080
+# open http://localhost:8080 — register or log in, then move
 ```
 
-Custom host/port:
+Custom host/port or MySQL:
 
 ```bash
 go run ./cmd/map-walker -host 127.0.0.1 -port 3000
+go run ./cmd/map-walker -db-driver mysql -db-dsn 'user:pass@tcp(localhost:3306)/mapwalker'
 ```
 
-Open two browser windows (or a phone on the same Wi-Fi) to see multiplayer.
+Database is created automatically on first run (`data/map-walker.db` for SQLite).
+Press **Ctrl+C** for graceful shutdown — all online positions are saved before exit.
+
+Open two browser windows with different accounts (or one account in two windows
+for reconnect testing) to see multiplayer.
 
 ## Architecture
 
 ```text
-cmd/map-walker/      — entry point, wires Hub + HTTP server
-internal/server/     — routes, static files, WebSocket upgrade
-internal/realtime/   — connection lifecycle, actor loop, tickers, protocol
+cmd/map-walker/      — entry point, graceful shutdown
+internal/server/     — routes, static files, WebSocket upgrade, auth endpoints
+internal/realtime/   — connection lifecycle, actor loop, tickers, protocol, persistence interface
 internal/game/       — authoritative World, movement rules, snapshots, deltas
-web/                 — Leaflet/Amap frontend, keyboard + virtual joystick
+internal/auth/       — user registration/login, session tokens, bcrypt
+internal/storage/    — SQLite/MySQL, migrations, user/session/position persistence
+web/                 — Leaflet/Amap frontend, auth card, keyboard + virtual joystick
 ```
 
-The Hub goroutine owns all connections and the World. Client read goroutines
-submit input events through a channel. A 20 Hz simulation ticker advances the
-World; a separate 10 Hz broadcast ticker sends only accumulated changes and
-removals.
+### Identity flow
 
-Each WebSocket client sends protocol-level pings to detect unresponsive peers.
-Heartbeat, read, and write failures all end the same connection lifecycle; the
-Hub actor loop remains the only owner of player removal.
+User registers or logs in → server sets `map_walker_session` cookie (HttpOnly,
+30-day expiry, SHA-256 hashed in DB) → WebSocket upgrade authenticates from
+cookie → Hub uses the authenticated user ID as the player ID. Logout disconnects
+the WebSocket, saves the final position, revokes the session, and clears the
+cookie.
 
-Browsers reconnect automatically after disconnects. Retry delays grow through 1,
-2, 4, and 8 seconds, then cap at 10 seconds. The tab reuses its `playerId` from
-`sessionStorage`, but the server treats each reconnect as a new registration at
-the spawn position. Map markers stay visible while disconnected; the next
-`world_snapshot` reconciles rendering. Input history is not queued while
-disconnected—only the latest controls are sent when the socket opens.
+### Position persistence
+
+Every 5 seconds the Hub submits only moved players to a background
+`PersistenceWorker` which writes to the database via a dedicated goroutine —
+simulation and broadcasts are never blocked. Genuine disconnects and logout
+trigger a synchronous final save. On reconnect, the saved position is restored.
+Same-account replacement (e.g. page refresh) keeps the in-memory position.
 
 ## WebSocket Protocol
 
@@ -56,14 +64,28 @@ Client → Server:
 Server → Newly Connected Client:
 
 ```json
-{"type":"world_snapshot","tick":1280,"players":[{"id":"p-…","lat":31.23,"lng":121.47}]}
+{"type":"world_snapshot","tick":1280,"players":[{"id":"UUID","lat":31.23,"lng":121.47}]}
 ```
 
 Server → Existing Clients:
 
 ```json
-{"type":"players_delta","tick":1282,"players":[{"id":"p-…","lat":31.24,"lng":121.48}],"removedPlayerIds":[]}
+{"type":"players_delta","tick":1282,"players":[{"id":"UUID","lat":31.24,"lng":121.48}],"removedPlayerIds":[]}
 ```
+
+Player IDs are authenticated user UUIDs — the server ignores client-supplied
+player IDs.
+
+## HTTP API
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/register` | No | Register and get session cookie |
+| `POST` | `/api/login` | No | Login and get session cookie |
+| `POST` | `/api/logout` | No | Revoke session, clear cookie |
+| `GET` | `/api/session` | No | Return current user or 401 |
+| `GET` | `/ws` | Session | WebSocket upgrade |
+| `GET` | `/healthz` | No | Health check |
 
 ## Run Tests
 

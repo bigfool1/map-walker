@@ -45,7 +45,7 @@ multiple characters remain outside this plan.
 
 ### Task 1: Establish SQLite And Migration Ownership
 
-- [ ] Deliver an idempotent SQLite startup and forward-only migration boundary.
+- [x] Deliver an idempotent SQLite startup and forward-only migration boundary.
 
 **Task boundary:**
 
@@ -83,7 +83,7 @@ multiple characters remain outside this plan.
 
 ### Task 2: Add Users, Passwords, And Sessions
 
-- [ ] Deliver durable account credentials and 30-day server-side sessions.
+- [x] Deliver durable account credentials and 30-day server-side sessions.
 
 **Task boundary:**
 
@@ -122,7 +122,7 @@ multiple characters remain outside this plan.
 
 ### Task 3: Expose The Authentication HTTP Contract
 
-- [ ] Deliver the approved registration, login, logout, and session APIs.
+- [x] Deliver the approved registration, login, logout, and session APIs.
 
 **Task boundary:**
 
@@ -163,7 +163,7 @@ multiple characters remain outside this plan.
 
 ### Task 4: Make WebSocket Identity Server-Owned
 
-- [ ] Deliver Cookie-authenticated WebSocket identity with no client-selected player ID.
+- [x] Deliver Cookie-authenticated WebSocket identity with no client-selected player ID.
 
 **Task boundary:**
 
@@ -200,7 +200,7 @@ multiple characters remain outside this plan.
 
 ### Task 5: Restore Offline Players At Saved Positions
 
-- [ ] Deliver saved-position restoration without weakening World authority.
+- [x] Deliver saved-position restoration without weakening World authority.
 
 **Task boundary:**
 
@@ -234,7 +234,7 @@ multiple characters remain outside this plan.
 
 ### Task 6: Add Asynchronous Position Persistence
 
-- [ ] Deliver periodic and final position saves outside the Hub simulation loop.
+- [x] Deliver periodic and final position saves outside the Hub simulation loop.
 
 **Task boundary:**
 
@@ -274,7 +274,7 @@ multiple characters remain outside this plan.
 
 ### Task 7: Complete Logout And Graceful Shutdown Semantics
 
-- [ ] Deliver ordered logout and shutdown flows that commit final positions.
+- [x] Deliver ordered logout and shutdown flows that commit final positions.
 
 **Task boundary:**
 
@@ -314,7 +314,7 @@ multiple characters remain outside this plan.
 
 ### Task 8: Add The Authentication User Interface
 
-- [ ] Deliver the centered auth card and authenticated account control.
+- [x] Deliver the centered auth card and authenticated account control.
 
 **Task boundary:**
 
@@ -354,7 +354,7 @@ multiple characters remain outside this plan.
 
 ### Task 9: Update Project Contracts And Complete End-To-End Verification
 
-- [ ] Deliver updated documentation and verify the complete account lifecycle.
+- [x] Deliver updated documentation and verify the complete account lifecycle.
 
 **Task boundary:**
 
