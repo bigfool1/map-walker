@@ -51,7 +51,7 @@ type Snapshot struct {
 
 type Delta struct {
 	Tick             uint64
-	Players          []PlayerPosition
+	Players          []PlayerState
 	RemovedPlayerIDs []string
 }
 
@@ -221,7 +221,7 @@ func (w *World) TakeDelta() Delta {
 
 	delta := Delta{
 		Tick:             w.tick,
-		Players:          w.positionsFor(playerIDs),
+		Players:          w.statesFor(playerIDs),
 		RemovedPlayerIDs: removedIDs,
 	}
 
@@ -241,16 +241,6 @@ func (w *World) playersKeys() []string {
 	}
 	sort.Strings(ids)
 	return ids
-}
-
-func (w *World) positionsFor(ids []string) []PlayerPosition {
-	positions := make([]PlayerPosition, 0, len(ids))
-	for _, id := range ids {
-		if p, exists := w.players[id]; exists {
-			positions = append(positions, p.position)
-		}
-	}
-	return positions
 }
 
 func (w *World) statesFor(ids []string) []PlayerState {

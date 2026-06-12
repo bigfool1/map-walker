@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Map Walker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
-    <link rel="stylesheet" href="/styles.css?v=3">
+    <link rel="stylesheet" href="/styles.css?v=4">
   </head>
   <body>
     <main id="map" aria-label="Map Walker play area"></main>
@@ -23,8 +23,43 @@
       </p>
     </div>
     <div id="account-ctrl" class="account-ctrl" style="display:none">
-      <span id="account-username"></span>
-      <button id="account-logout">退出</button>
+      <button
+        id="account-menu-trigger"
+        class="account-ctrl__trigger"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-controls="account-menu"
+      >
+        <span id="account-trigger-preview" class="appearance-preview appearance-preview--sm" aria-hidden="true">
+          <span class="player-marker__shape"></span>
+        </span>
+        <span id="account-username"></span>
+        <span class="account-ctrl__chevron" aria-hidden="true"></span>
+      </button>
+      <div id="account-menu" class="account-menu" role="menu" hidden>
+        <button id="account-edit-appearance" class="account-menu__item" type="button" role="menuitem">更改外观</button>
+        <button id="account-logout" class="account-menu__item" type="button" role="menuitem">退出</button>
+      </div>
+      <div id="appearance-editor" class="appearance-editor" hidden>
+        <h3 class="appearance-editor__title">外观</h3>
+        <div id="appearance-editor-preview" class="appearance-preview appearance-preview--lg" aria-hidden="true">
+          <span class="player-marker__shape"></span>
+        </div>
+        <div class="appearance-editor__shapes" role="group" aria-label="形状">
+          <button type="button" class="appearance-editor__shape" data-shape="circle" aria-pressed="false">圆形</button>
+          <button type="button" class="appearance-editor__shape" data-shape="square" aria-pressed="false">方形</button>
+          <button type="button" class="appearance-editor__shape" data-shape="diamond" aria-pressed="false">菱形</button>
+          <button type="button" class="appearance-editor__shape" data-shape="triangle" aria-pressed="false">三角</button>
+        </div>
+        <label class="appearance-editor__color-label" for="appearance-color">颜色</label>
+        <input id="appearance-color" type="color" value="#3388ff">
+        <p id="appearance-error" class="appearance-editor__error"></p>
+        <div class="appearance-editor__actions">
+          <button id="appearance-save" type="button">保存</button>
+          <button id="appearance-cancel" type="button">取消</button>
+        </div>
+      </div>
     </div>
     <div id="status" class="status status--connecting">连接中</div>
     <div class="joystick" aria-label="Movement joystick">

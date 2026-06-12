@@ -231,7 +231,9 @@ func TestWorldMovementPreservesAppearance(t *testing.T) {
 	if len(delta.Players) != 1 {
 		t.Fatalf("expected one delta player, got %+v", delta.Players)
 	}
-	if delta.Players[0] != position {
+	if delta.Players[0].ID != position.ID ||
+		delta.Players[0].Lat != position.Lat ||
+		delta.Players[0].Lng != position.Lng {
 		t.Fatalf("delta position = %+v, want %+v", delta.Players[0], position)
 	}
 }

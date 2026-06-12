@@ -45,10 +45,10 @@ type AppearanceChangedMessage struct {
 }
 
 type PlayersDeltaMessage struct {
-	Type             string                `json:"type"`
-	Tick             uint64                `json:"tick"`
-	Players          []game.PlayerPosition `json:"players"`
-	RemovedPlayerIDs []string              `json:"removedPlayerIds"`
+	Type             string              `json:"type"`
+	Tick             uint64              `json:"tick"`
+	Players          []game.PlayerState  `json:"players"`
+	RemovedPlayerIDs []string            `json:"removedPlayerIds"`
 }
 
 func EncodeWorldSnapshot(snapshot game.Snapshot) ([]byte, error) {

@@ -78,8 +78,8 @@ func TestEncodeAppearanceChanged(t *testing.T) {
 func TestEncodePlayersDelta(t *testing.T) {
 	data, err := EncodePlayersDelta(game.Delta{
 		Tick: 9,
-		Players: []game.PlayerPosition{
-			{ID: "alice", Lat: 31.2305, Lng: 121.4738},
+		Players: []game.PlayerState{
+			{ID: "alice", Username: "alice", Lat: 31.2305, Lng: 121.4738, Appearance: game.DefaultAppearance()},
 		},
 		RemovedPlayerIDs: []string{"bob"},
 	})
@@ -87,7 +87,7 @@ func TestEncodePlayersDelta(t *testing.T) {
 		t.Fatalf("encode failed: %v", err)
 	}
 
-	want := `{"type":"players_delta","tick":9,"players":[{"id":"alice","lat":31.2305,"lng":121.4738}],"removedPlayerIds":["bob"]}`
+	want := `{"type":"players_delta","tick":9,"players":[{"id":"alice","username":"alice","lat":31.2305,"lng":121.4738,"appearance":{"color":"#3388ff","shape":"circle"}}],"removedPlayerIds":["bob"]}`
 	if string(data) != want {
 		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
 	}

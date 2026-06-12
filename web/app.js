@@ -1,9 +1,16 @@
 const startPosition = { lat: 31.2304, lng: 121.4737 };
 const MARKER_SIZE = 20;
 const MARKER_ANCHOR = MARKER_SIZE / 2;
+const DEFAULT_APPEARANCE = { color: "#3388ff", shape: "circle" };
+const APPEARANCE_SHAPES = ["circle", "square", "diamond", "triangle"];
 
 let currentUserId = null;
 let currentUsername = null;
+let authoritativeAppearance = { ...DEFAULT_APPEARANCE };
+let draftAppearance = { ...DEFAULT_APPEARANCE };
+let menuOpen = false;
+let editorOpen = false;
+let savingAppearance = false;
 let authMode = "login";
 const markers = new Map();
 const input = {
@@ -42,12 +49,14 @@ bindKeyboardControls();
 bindJoystickControls();
 bindInputSafetyControls();
 bindAuthControls();
+bindAccountControls();
 
 async function bootstrap() {
   const session = await fetchSession();
   if (session) {
     currentUserId = session.userId;
     currentUsername = session.username;
+    setAuthoritativeAppearance(session.appearance || DEFAULT_APPEARANCE);
     hideAuthCard();
     showAccountControl();
     connect();
@@ -73,6 +82,7 @@ function showAuthCard() {
   }
   currentUserId = null;
   currentUsername = null;
+  resetAccountUI();
   hideAccountControl();
   resetAuthMode();
   document.getElementById("auth-card").style.display = "";
@@ -96,13 +106,172 @@ function hideAuthCard() {
 }
 
 function showAccountControl() {
-  const el = document.getElementById("account-ctrl");
-  el.style.display = "";
+  document.getElementById("account-ctrl").style.display = "";
   document.getElementById("account-username").textContent = currentUsername || "";
+  renderAppearancePreview(
+    document.getElementById("account-trigger-preview"),
+    authoritativeAppearance
+  );
 }
 
 function hideAccountControl() {
   document.getElementById("account-ctrl").style.display = "none";
+}
+
+function resetAccountUI() {
+  menuOpen = false;
+  editorOpen = false;
+  savingAppearance = false;
+  authoritativeAppearance = { ...DEFAULT_APPEARANCE };
+  draftAppearance = { ...DEFAULT_APPEARANCE };
+  closeAccountMenu();
+  closeAppearanceEditor();
+  setSaveAppearanceEnabled(true);
+  document.getElementById("appearance-error").textContent = "";
+}
+
+function setAuthoritativeAppearance(appearance) {
+  authoritativeAppearance = {
+    color: appearance.color,
+    shape: appearance.shape,
+  };
+  const preview = document.getElementById("account-trigger-preview");
+  if (preview) {
+    renderAppearancePreview(preview, authoritativeAppearance);
+  }
+}
+
+function renderAppearancePreview(element, appearance) {
+  element.style.setProperty("--marker-color", appearance.color);
+  for (const shape of APPEARANCE_SHAPES) {
+    element.classList.toggle(`appearance-preview--${shape}`, appearance.shape === shape);
+  }
+}
+
+function applyAppearanceToCurrentUserMarker(appearance) {
+  if (!currentUserId) {
+    return;
+  }
+  renderAppearanceChanged(currentUserId, appearance);
+}
+
+function openAccountMenu() {
+  closeAppearanceEditor();
+  menuOpen = true;
+  const menu = document.getElementById("account-menu");
+  menu.hidden = false;
+  document.getElementById("account-menu-trigger").setAttribute("aria-expanded", "true");
+}
+
+function closeAccountMenu() {
+  menuOpen = false;
+  const menu = document.getElementById("account-menu");
+  menu.hidden = true;
+  document.getElementById("account-menu-trigger").setAttribute("aria-expanded", "false");
+}
+
+function toggleAccountMenu() {
+  if (menuOpen) {
+    closeAccountMenu();
+    return;
+  }
+  openAccountMenu();
+}
+
+function openAppearanceEditor() {
+  closeAccountMenu();
+  editorOpen = true;
+  draftAppearance = {
+    color: authoritativeAppearance.color,
+    shape: authoritativeAppearance.shape,
+  };
+  document.getElementById("appearance-editor").hidden = false;
+  document.getElementById("appearance-error").textContent = "";
+  syncAppearanceEditorControls();
+  renderAppearancePreview(
+    document.getElementById("appearance-editor-preview"),
+    draftAppearance
+  );
+}
+
+function closeAppearanceEditor() {
+  editorOpen = false;
+  document.getElementById("appearance-editor").hidden = true;
+  document.getElementById("appearance-error").textContent = "";
+  setSaveAppearanceEnabled(true);
+}
+
+function syncAppearanceEditorControls() {
+  document.getElementById("appearance-color").value = draftAppearance.color;
+  for (const button of document.querySelectorAll(".appearance-editor__shape")) {
+    const selected = button.dataset.shape === draftAppearance.shape;
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+  }
+}
+
+function updateDraftAppearance(nextAppearance) {
+  draftAppearance = {
+    color: nextAppearance.color,
+    shape: nextAppearance.shape,
+  };
+  renderAppearancePreview(
+    document.getElementById("appearance-editor-preview"),
+    draftAppearance
+  );
+  syncAppearanceEditorControls();
+}
+
+function setSaveAppearanceEnabled(enabled) {
+  savingAppearance = !enabled;
+  document.getElementById("appearance-save").disabled = !enabled;
+}
+
+async function saveAppearance() {
+  if (savingAppearance) {
+    return;
+  }
+  document.getElementById("appearance-error").textContent = "";
+  setSaveAppearanceEnabled(false);
+
+  let resp;
+  try {
+    resp = await fetch("/api/appearance", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        color: draftAppearance.color,
+        shape: draftAppearance.shape,
+      }),
+    });
+  } catch {
+    document.getElementById("appearance-error").textContent = "网络错误，请稍后重试";
+    setSaveAppearanceEnabled(true);
+    return;
+  }
+
+  let data = {};
+  try {
+    data = await resp.json();
+  } catch {
+    data = {};
+  }
+
+  if (!resp.ok) {
+    document.getElementById("appearance-error").textContent =
+      data.error || "保存失败，请重试";
+    setSaveAppearanceEnabled(true);
+    return;
+  }
+
+  const saved = { color: data.color, shape: data.shape };
+  setAuthoritativeAppearance(saved);
+  applyAppearanceToCurrentUserMarker(saved);
+  closeAppearanceEditor();
+  setSaveAppearanceEnabled(true);
+}
+
+function cancelAppearanceEdit() {
+  closeAppearanceEditor();
 }
 
 async function handleAuthSubmit(event) {
@@ -133,6 +302,7 @@ async function handleAuthSubmit(event) {
 
   currentUserId = data.userId;
   currentUsername = data.username;
+  setAuthoritativeAppearance(data.appearance || DEFAULT_APPEARANCE);
   hideAuthCard();
   showAccountControl();
   shouldReconnect = true;
@@ -210,6 +380,7 @@ async function logout() {
   }
   currentUserId = null;
   currentUsername = null;
+  resetAccountUI();
   markers.forEach((entry) => entry.marker.remove());
   markers.clear();
   setStatus("disconnected");
@@ -232,6 +403,8 @@ function scheduleReconnect() {
       }
       currentUserId = session.userId;
       currentUsername = session.username;
+      setAuthoritativeAppearance(session.appearance || DEFAULT_APPEARANCE);
+      showAccountControl();
       doReconnect();
     });
     return;
@@ -319,10 +492,16 @@ function renderDelta(players, removedPlayerIds) {
 function renderAppearanceChanged(playerId, appearance) {
   const entry = markers.get(playerId);
   if (!entry || sameAppearance(entry.appearance, appearance)) {
+    if (playerId === currentUserId && !editorOpen) {
+      setAuthoritativeAppearance(appearance);
+    }
     return;
   }
   entry.appearance = { color: appearance.color, shape: appearance.shape };
   entry.marker.setIcon(playerMarkerIcon(appearance));
+  if (playerId === currentUserId && !editorOpen) {
+    setAuthoritativeAppearance(appearance);
+  }
 }
 
 function upsertPlayerFromSnapshot(player) {
@@ -338,6 +517,9 @@ function upsertPlayerFromSnapshot(player) {
     if (!sameAppearance(entry.appearance, player.appearance)) {
       entry.appearance = { color: player.appearance.color, shape: player.appearance.shape };
       entry.marker.setIcon(playerMarkerIcon(player.appearance));
+    }
+    if (player.id === currentUserId && !editorOpen) {
+      setAuthoritativeAppearance(player.appearance);
     }
   } else {
     const marker = L.marker(latLng, { icon: playerMarkerIcon(player.appearance) })
@@ -563,7 +745,56 @@ function setStatus(status, attempt = 0) {
 function bindAuthControls() {
   document.getElementById("auth-form").addEventListener("submit", handleAuthSubmit);
   document.getElementById("auth-toggle-link").addEventListener("click", toggleAuthMode);
+}
+
+function bindAccountControls() {
+  const trigger = document.getElementById("account-menu-trigger");
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAccountMenu();
+  });
+
+  document.getElementById("account-edit-appearance").addEventListener("click", () => {
+    openAppearanceEditor();
+  });
   document.getElementById("account-logout").addEventListener("click", logout);
+  document.getElementById("appearance-save").addEventListener("click", saveAppearance);
+  document.getElementById("appearance-cancel").addEventListener("click", cancelAppearanceEdit);
+
+  document.getElementById("appearance-color").addEventListener("input", (event) => {
+    updateDraftAppearance({
+      color: event.target.value,
+      shape: draftAppearance.shape,
+    });
+  });
+
+  for (const button of document.querySelectorAll(".appearance-editor__shape")) {
+    button.addEventListener("click", () => {
+      updateDraftAppearance({
+        color: draftAppearance.color,
+        shape: button.dataset.shape,
+      });
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const account = document.getElementById("account-ctrl");
+    if (!account.contains(event.target)) {
+      closeAccountMenu();
+      if (editorOpen) {
+        closeAppearanceEditor();
+      }
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAccountMenu();
+      if (editorOpen) {
+        cancelAppearanceEdit();
+      }
+    }
+  });
 }
 
 window.mapWalker = { logout };
