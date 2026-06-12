@@ -102,6 +102,7 @@ func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 			Lat:         31.5,
 			Lng:         121.5,
 			HasPosition: true,
+			Username:    "Alice",
 			Appearance:  savedAppearance,
 		}, true
 	})
@@ -121,6 +122,9 @@ func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 	}
 	if snapshot.Players[0].Appearance != savedAppearance {
 		t.Fatalf("expected saved appearance, got %+v", snapshot.Players[0].Appearance)
+	}
+	if snapshot.Players[0].Username != "Alice" {
+		t.Fatalf("expected saved username, got %q", snapshot.Players[0].Username)
 	}
 }
 
@@ -508,6 +512,10 @@ func NewTestClient(id string, buffer int) *testClient {
 }
 
 func (c *testClient) ID() string {
+	return c.id
+}
+
+func (c *testClient) Username() string {
 	return c.id
 }
 

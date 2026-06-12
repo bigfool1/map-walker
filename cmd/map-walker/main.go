@@ -38,6 +38,7 @@ func main() {
 			return realtime.SavedPlayerLoad{}, false
 		}
 		return realtime.SavedPlayerLoad{
+			Username:    state.Username,
 			Lat:         state.Lat,
 			Lng:         state.Lng,
 			HasPosition: state.HasPosition,

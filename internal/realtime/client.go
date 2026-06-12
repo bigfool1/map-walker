@@ -19,6 +19,7 @@ var (
 
 type Client struct {
 	id        string
+	username  string
 	conn      *websocket.Conn
 	hub       *Hub
 	send      chan []byte
@@ -26,17 +27,22 @@ type Client struct {
 	closeOnce sync.Once
 }
 
-func NewClient(id string, conn *websocket.Conn, hub *Hub) *Client {
+func NewClient(id, username string, conn *websocket.Conn, hub *Hub) *Client {
 	return &Client{
-		id:   id,
-		conn: conn,
-		hub:  hub,
-		send: make(chan []byte, sendBufferSize),
+		id:       id,
+		username: username,
+		conn:     conn,
+		hub:      hub,
+		send:     make(chan []byte, sendBufferSize),
 	}
 }
 
 func (c *Client) ID() string {
 	return c.id
+}
+
+func (c *Client) Username() string {
+	return c.username
 }
 
 func (c *Client) Send(data []byte) bool {

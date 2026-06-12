@@ -43,6 +43,7 @@ func TestEncodeWorldSnapshot(t *testing.T) {
 		Players: []game.PlayerState{
 			{
 				ID:         "alice",
+				Username:   "Alice",
 				Lat:        31.2304,
 				Lng:        121.4737,
 				Appearance: game.Appearance{Color: "#3388ff", Shape: game.ShapeCircle},
@@ -53,7 +54,7 @@ func TestEncodeWorldSnapshot(t *testing.T) {
 		t.Fatalf("encode failed: %v", err)
 	}
 
-	want := `{"type":"world_snapshot","tick":7,"players":[{"id":"alice","lat":31.2304,"lng":121.4737,"appearance":{"color":"#3388ff","shape":"circle"}}]}`
+	want := `{"type":"world_snapshot","tick":7,"players":[{"id":"alice","username":"Alice","lat":31.2304,"lng":121.4737,"appearance":{"color":"#3388ff","shape":"circle"}}]}`
 	if string(data) != want {
 		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
 	}

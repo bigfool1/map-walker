@@ -43,7 +43,7 @@ func TestClientDisconnectsUnresponsivePeer(t *testing.T) {
 			return
 		}
 
-		client := NewClient("alice", conn, hub)
+		client := NewClient("alice", "alice", conn, hub)
 		go func() {
 			client.Run(context.Background())
 			close(closed)
@@ -79,7 +79,7 @@ func TestClientKeepsResponsivePeerConnected(t *testing.T) {
 			return
 		}
 
-		client := NewClient("alice", conn, hub)
+		client := NewClient("alice", "alice", conn, hub)
 		go client.Run(context.Background())
 	}))
 	defer server.Close()
@@ -125,7 +125,7 @@ func TestClientFinishStopsHeartbeatWorker(t *testing.T) {
 			return
 		}
 
-		client := NewClient("alice", conn, hub)
+		client := NewClient("alice", "alice", conn, hub)
 		go func() {
 			client.Run(context.Background())
 			close(done)

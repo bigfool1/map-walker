@@ -132,6 +132,7 @@ func SavedPositionLoader(db *DB) func(userID string) (lat, lng float64, ok bool)
 }
 
 type SavedPlayerState struct {
+	Username    string
 	Lat         float64
 	Lng         float64
 	HasPosition bool
@@ -144,7 +145,10 @@ func (db *DB) GetUserSavedState(userID string) (SavedPlayerState, error) {
 		return SavedPlayerState{}, err
 	}
 
-	state := SavedPlayerState{Appearance: user.Appearance}
+	state := SavedPlayerState{
+		Username:   user.Username,
+		Appearance: user.Appearance,
+	}
 	if user.LastLat.Valid && user.LastLng.Valid {
 		state.Lat = user.LastLat.Float64
 		state.Lng = user.LastLng.Float64

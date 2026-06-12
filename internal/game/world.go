@@ -38,6 +38,7 @@ type PlayerPosition struct {
 
 type PlayerState struct {
 	ID         string     `json:"id"`
+	Username   string     `json:"username"`
 	Lat        float64    `json:"lat"`
 	Lng        float64    `json:"lng"`
 	Appearance Appearance `json:"appearance"`
@@ -60,6 +61,7 @@ func (d Delta) HasChanges() bool {
 
 type player struct {
 	position     PlayerPosition
+	username     string
 	appearance   Appearance
 	input        InputState
 	lastSequence uint64
@@ -87,14 +89,18 @@ func (w *World) SpawnLatLng() (float64, float64) {
 }
 
 func (w *World) AddPlayer(playerID string) bool {
-	return w.AddPlayerAt(playerID, w.config.SpawnLat, w.config.SpawnLng)
+	return w.AddPlayerWithState(playerID, playerID, w.config.SpawnLat, w.config.SpawnLng, DefaultAppearance())
 }
 
 func (w *World) AddPlayerAt(playerID string, lat, lng float64) bool {
-	return w.AddPlayerWithAppearance(playerID, lat, lng, DefaultAppearance())
+	return w.AddPlayerWithState(playerID, playerID, lat, lng, DefaultAppearance())
 }
 
 func (w *World) AddPlayerWithAppearance(playerID string, lat, lng float64, appearance Appearance) bool {
+	return w.AddPlayerWithState(playerID, playerID, lat, lng, appearance)
+}
+
+func (w *World) AddPlayerWithState(playerID, username string, lat, lng float64, appearance Appearance) bool {
 	if _, exists := w.players[playerID]; exists {
 		return false
 	}
@@ -105,6 +111,7 @@ func (w *World) AddPlayerWithAppearance(playerID string, lat, lng float64, appea
 			Lat: lat,
 			Lng: lng,
 		},
+		username:   username,
 		appearance: appearance,
 	}
 	w.dirtyPlayerIDs[playerID] = struct{}{}
@@ -252,6 +259,7 @@ func (w *World) statesFor(ids []string) []PlayerState {
 		if p, exists := w.players[id]; exists {
 			states = append(states, PlayerState{
 				ID:         p.position.ID,
+				Username:   p.username,
 				Lat:        p.position.Lat,
 				Lng:        p.position.Lng,
 				Appearance: p.appearance,

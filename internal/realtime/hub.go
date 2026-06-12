@@ -17,6 +17,7 @@ const (
 
 type ClientSender interface {
 	ID() string
+	Username() string
 	Send([]byte) bool
 	CloseSend()
 }
@@ -248,25 +249,30 @@ func (h *Hub) registerClient(client ClientSender) {
 		existing.CloseSend()
 		h.world.ResetInput(client.ID())
 	} else if !h.world.HasPlayer(client.ID()) {
-		h.addPlayer(client.ID())
+		h.addPlayer(client.ID(), client.Username())
 	}
 
 	h.clients[client.ID()] = client
 	h.sendSnapshot(client)
 }
 
-func (h *Hub) addPlayer(userID string) {
+func (h *Hub) addPlayer(userID, username string) {
 	if h.loadSavedPlayer != nil {
 		if state, ok := h.loadSavedPlayer(userID); ok {
 			lat, lng := state.Lat, state.Lng
 			if !state.HasPosition {
 				lat, lng = h.world.SpawnLatLng()
 			}
-			h.world.AddPlayerWithAppearance(userID, lat, lng, state.Appearance)
+			playerUsername := state.Username
+			if playerUsername == "" {
+				playerUsername = username
+			}
+			h.world.AddPlayerWithState(userID, playerUsername, lat, lng, state.Appearance)
 			return
 		}
 	}
-	h.world.AddPlayer(userID)
+	lat, lng := h.world.SpawnLatLng()
+	h.world.AddPlayerWithState(userID, username, lat, lng, game.DefaultAppearance())
 }
 
 func (h *Hub) applyAppearanceUpdate(req appearanceUpdateRequest) {

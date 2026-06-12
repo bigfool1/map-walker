@@ -17,7 +17,7 @@ func TestWorldAddPlayerAtUsesExplicitPosition(t *testing.T) {
 	if len(snapshot.Players) != 1 {
 		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
 	}
-	if snapshot.Players[0] != (PlayerState{ID: "alice", Lat: 31.5, Lng: 121.5, Appearance: DefaultAppearance()}) {
+	if snapshot.Players[0] != (PlayerState{ID: "alice", Username: "alice", Lat: 31.5, Lng: 121.5, Appearance: DefaultAppearance()}) {
 		t.Fatalf("unexpected position: %+v", snapshot.Players[0])
 	}
 }
@@ -40,7 +40,7 @@ func TestWorldAddPlayerUsesConfiguredSpawn(t *testing.T) {
 	if len(snapshot.Players) != 1 {
 		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
 	}
-	if snapshot.Players[0] != (PlayerState{ID: "alice", Lat: 31.2304, Lng: 121.4737, Appearance: DefaultAppearance()}) {
+	if snapshot.Players[0] != (PlayerState{ID: "alice", Username: "alice", Lat: 31.2304, Lng: 121.4737, Appearance: DefaultAppearance()}) {
 		t.Fatalf("unexpected spawn: %+v", snapshot.Players[0])
 	}
 }

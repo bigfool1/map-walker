@@ -125,6 +125,9 @@ func TestSavedPlayerLoader(t *testing.T) {
 	if state.Appearance.Color != "#ff6600" || state.Appearance.Shape != "triangle" {
 		t.Fatalf("unexpected appearance: %+v", state.Appearance)
 	}
+	if state.Username != "alice" {
+		t.Fatalf("unexpected username: %q", state.Username)
+	}
 
 	if _, ok := loader("missing-user"); ok {
 		t.Fatal("expected missing user to have no saved state")

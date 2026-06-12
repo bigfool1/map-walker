@@ -35,7 +35,7 @@ L.tileLayer(
   }
 ).addTo(map);
 
-let resetJoystick = () => {};
+let resetJoystick = () => { };
 
 bootstrap();
 bindKeyboardControls();
@@ -308,7 +308,11 @@ function renderDelta(players, removedPlayerIds) {
     removePlayerMarker(playerIdToRemove);
   }
   for (const player of players) {
-    updatePlayerPosition(player);
+    if (markers.has(player.id)) {
+      updatePlayerPosition(player);
+    } else {
+      upsertPlayerFromSnapshot(player);
+    }
   }
 }
 
@@ -323,20 +327,25 @@ function renderAppearanceChanged(playerId, appearance) {
 
 function upsertPlayerFromSnapshot(player) {
   const latLng = [player.lat, player.lng];
+  const label = markerLabel(player);
   const entry = markers.get(player.id);
   if (entry) {
     entry.marker.setLatLng(latLng);
+    if (entry.username !== player.username) {
+      entry.username = player.username;
+      entry.marker.setTooltipContent(label);
+    }
     if (!sameAppearance(entry.appearance, player.appearance)) {
       entry.appearance = { color: player.appearance.color, shape: player.appearance.shape };
       entry.marker.setIcon(playerMarkerIcon(player.appearance));
     }
   } else {
-    const label = player.id === currentUserId ? "You" : "Player";
     const marker = L.marker(latLng, { icon: playerMarkerIcon(player.appearance) })
       .addTo(map)
       .bindTooltip(label);
     markers.set(player.id, {
       marker,
+      username: player.username,
       appearance: { color: player.appearance.color, shape: player.appearance.shape },
     });
   }
@@ -344,6 +353,13 @@ function upsertPlayerFromSnapshot(player) {
   if (player.id === currentUserId) {
     map.panTo(latLng, { animate: true });
   }
+}
+
+function markerLabel(player) {
+  if (player.id === currentUserId) {
+    return "You";
+  }
+  return player.username || "Player";
 }
 
 function updatePlayerPosition(player) {
