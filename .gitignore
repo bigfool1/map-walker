@@ -42,3 +42,6 @@ tmp/
 *.log
 .superpowers/
 data/
+
+*.png
+.playwright-mcp/

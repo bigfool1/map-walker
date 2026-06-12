@@ -1,5 +1,7 @@
 const startPosition = { lat: 31.2304, lng: 121.4737 };
 let currentUserId = null;
+let currentUsername = null;
+let authMode = "login";
 const markers = new Map();
 const input = {
   up: false,
@@ -38,14 +40,19 @@ bootstrap();
 bindKeyboardControls();
 bindJoystickControls();
 bindInputSafetyControls();
+bindAuthControls();
 
 async function bootstrap() {
   const session = await fetchSession();
-  if (!session) {
+  if (session) {
+    currentUserId = session.userId;
+    currentUsername = session.username;
+    hideAuthCard();
+    showAccountControl();
+    connect();
     return;
   }
-  currentUserId = session.userId;
-  connect();
+  showAuthCard();
 }
 
 async function fetchSession() {
@@ -54,6 +61,81 @@ async function fetchSession() {
     return null;
   }
   return response.json();
+}
+
+function showAuthCard() {
+  shouldReconnect = false;
+  clearRetryTimer();
+  if (socket) {
+    socket.close();
+    socket = null;
+  }
+  currentUserId = null;
+  currentUsername = null;
+  hideAccountControl();
+  document.getElementById("auth-card").style.display = "";
+  document.getElementById("status").style.display = "none";
+  document.getElementById("auth-error").textContent = "";
+}
+
+function hideAuthCard() {
+  document.getElementById("auth-card").style.display = "none";
+  document.getElementById("status").style.display = "";
+}
+
+function showAccountControl() {
+  const el = document.getElementById("account-ctrl");
+  el.style.display = "";
+  document.getElementById("account-username").textContent = currentUsername || "";
+}
+
+function hideAccountControl() {
+  document.getElementById("account-ctrl").style.display = "none";
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const username = document.getElementById("auth-username").value;
+  const password = document.getElementById("auth-password").value;
+  const errorEl = document.getElementById("auth-error");
+  errorEl.textContent = "";
+
+  const endpoint = authMode === "login" ? "/api/login" : "/api/register";
+  let resp;
+  try {
+    resp = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    errorEl.textContent = "网络错误，请稍后重试";
+    return;
+  }
+
+  const data = await resp.json();
+  if (!resp.ok) {
+    errorEl.textContent = data.error || "未知错误";
+    return;
+  }
+
+  currentUserId = data.userId;
+  currentUsername = data.username;
+  hideAuthCard();
+  showAccountControl();
+  shouldReconnect = true;
+  retryAttempt = 0;
+  connect();
+}
+
+function toggleAuthMode(event) {
+  event.preventDefault();
+  authMode = authMode === "login" ? "register" : "login";
+  document.getElementById("auth-title").textContent = authMode === "login" ? "登录" : "注册";
+  document.getElementById("auth-submit").textContent = authMode === "login" ? "登录" : "注册";
+  document.getElementById("auth-toggle-text").textContent = authMode === "login" ? "没有账号？" : "已有账号？";
+  document.getElementById("auth-toggle-link").textContent = authMode === "login" ? "注册" : "登录";
+  document.getElementById("auth-error").textContent = "";
 }
 
 function connect() {
@@ -113,9 +195,12 @@ async function logout() {
     // 服务器可能在响应前就断开 WebSocket，忽略网络错误
   }
   currentUserId = null;
+  currentUsername = null;
   markers.forEach((marker) => marker.remove());
   markers.clear();
   setStatus("disconnected");
+  hideAccountControl();
+  showAuthCard();
 }
 
 function scheduleReconnect() {
@@ -124,8 +209,24 @@ function scheduleReconnect() {
   }
   clearRetryTimer();
   retryAttempt += 1;
-  setStatus("reconnecting", retryAttempt);
 
+  if (retryAttempt > retryDelays.length) {
+    fetchSession().then((session) => {
+      if (!session) {
+        showAuthCard();
+        return;
+      }
+      currentUserId = session.userId;
+      currentUsername = session.username;
+      doReconnect();
+    });
+    return;
+  }
+  doReconnect();
+}
+
+function doReconnect() {
+  setStatus("reconnecting", retryAttempt);
   const delay = retryDelays[Math.min(retryAttempt - 1, retryDelays.length - 1)];
   retryTimer = window.setTimeout(connect, delay);
 }
@@ -359,6 +460,12 @@ function setStatus(status, attempt = 0) {
     element.textContent = "已登出";
   }
   element.className = `status status--${status}`;
+}
+
+function bindAuthControls() {
+  document.getElementById("auth-form").addEventListener("submit", handleAuthSubmit);
+  document.getElementById("auth-toggle-link").addEventListener("click", toggleAuthMode);
+  document.getElementById("account-logout").addEventListener("click", logout);
 }
 
 window.mapWalker = { logout };

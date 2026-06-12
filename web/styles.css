@@ -42,6 +42,118 @@ body {
   color: #555;
 }
 
+.auth-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3000;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 28px 24px 16px;
+  width: 280px;
+  max-width: calc(100vw - 40px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+.auth-card h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  color: #1b1f23;
+}
+
+.auth-card input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.auth-card input:focus {
+  border-color: #4a86e8;
+  box-shadow: 0 0 0 2px rgba(74, 134, 232, 0.2);
+}
+
+.auth-card button[type="submit"] {
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 6px;
+  background: #1b6ef3;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-card button[type="submit"]:hover {
+  background: #155ac0;
+}
+
+.auth-card__error {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #c62828;
+  min-height: 18px;
+}
+
+.auth-card__toggle {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: #555;
+}
+
+.auth-card__link {
+  color: #1b6ef3;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.auth-card__link:hover {
+  text-decoration: underline;
+}
+
+.account-ctrl {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1b1f23;
+  font-size: 14px;
+  font-weight: 650;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+#account-logout {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  color: #555;
+}
+
+#account-logout:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .joystick {
   position: fixed;
   left: 20px;

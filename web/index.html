@@ -9,6 +9,23 @@
   </head>
   <body>
     <main id="map" aria-label="Map Walker play area"></main>
+    <div id="auth-card" class="auth-card">
+      <h2 id="auth-title">登录</h2>
+      <form id="auth-form">
+        <input id="auth-username" type="text" placeholder="用户名" autocomplete="username" required>
+        <input id="auth-password" type="password" placeholder="密码" autocomplete="current-password" required>
+        <p id="auth-error" class="auth-card__error"></p>
+        <button type="submit" id="auth-submit">登录</button>
+      </form>
+      <p class="auth-card__toggle">
+        <span id="auth-toggle-text">没有账号？</span>
+        <a href="#" id="auth-toggle-link">注册</a>
+      </p>
+    </div>
+    <div id="account-ctrl" class="account-ctrl" style="display:none">
+      <span id="account-username"></span>
+      <button id="account-logout">退出</button>
+    </div>
     <div id="status" class="status status--connecting">连接中</div>
     <div class="joystick" aria-label="Movement joystick">
       <div class="joystick__base">
