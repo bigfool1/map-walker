@@ -1,5 +1,5 @@
 const startPosition = { lat: 31.2304, lng: 121.4737 };
-const playerId = getOrCreatePlayerId();
+let currentUserId = null;
 const markers = new Map();
 const input = {
   up: false,
@@ -33,27 +33,33 @@ L.Icon.Default.imagePath = "/images/";
 
 let resetJoystick = () => {};
 
-connect();
+bootstrap();
 bindKeyboardControls();
 bindJoystickControls();
 bindInputSafetyControls();
 
-function getOrCreatePlayerId() {
-  const key = "map-walker-player-id";
-  const existing = sessionStorage.getItem(key);
-  if (existing) {
-    return existing;
+async function bootstrap() {
+  const session = await fetchSession();
+  if (!session) {
+    return;
   }
-  const created = `p-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  sessionStorage.setItem(key, created);
-  return created;
+  currentUserId = session.userId;
+  connect();
+}
+
+async function fetchSession() {
+  const response = await fetch("/api/session");
+  if (!response.ok) {
+    return null;
+  }
+  return response.json();
 }
 
 function connect() {
   clearRetryTimer();
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${protocol}//${window.location.host}/ws?playerId=${encodeURIComponent(playerId)}`;
+  const url = `${protocol}//${window.location.host}/ws`;
   const currentSocket = new WebSocket(url);
   socket = currentSocket;
 
@@ -176,11 +182,11 @@ function updatePlayers(players) {
     if (marker) {
       marker.setLatLng(latLng);
     } else {
-      const label = player.id === playerId ? "You" : "Player";
+      const label = player.id === currentUserId ? "You" : "Player";
       markers.set(player.id, L.marker(latLng).addTo(map).bindTooltip(label));
     }
 
-    if (player.id === playerId) {
+    if (player.id === currentUserId) {
       map.panTo(latLng, { animate: true });
     }
   }

@@ -92,6 +92,54 @@ func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
 	}
 }
 
+func TestHubReplacementRetainsInMemoryPosition(t *testing.T) {
+	hub, simulations, broadcasts := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	old := NewTestClient("alice", 8)
+	replacement := NewTestClient("alice", 8)
+	hub.Register(old)
+	mustReceiveSnapshot(t, old)
+	broadcasts <- time.Now()
+	mustReceiveDelta(t, old)
+
+	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, old)
+	broadcasts <- time.Now()
+	moved := mustReceiveDelta(t, old)
+	if len(moved.Players) != 1 {
+		t.Fatalf("unexpected movement delta: %+v", moved)
+	}
+	movedLng := moved.Players[0].Lng
+	if movedLng <= testWorldConfig().SpawnLng {
+		t.Fatalf("expected player to move right from spawn, got %+v", moved.Players[0])
+	}
+
+	hub.Register(replacement)
+	snapshot := mustReceiveSnapshot(t, replacement)
+	if len(snapshot.Players) != 1 {
+		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	}
+	if snapshot.Players[0].Lng != movedLng {
+		t.Fatalf("replacement reset position: got %v want %v", snapshot.Players[0].Lng, movedLng)
+	}
+
+	hub.ApplyInput(replacement, game.InputState{Sequence: 1, Left: true})
+	simulations <- time.Now()
+	assertNoMessage(t, replacement)
+	broadcasts <- time.Now()
+	replacementDelta := mustReceiveDelta(t, replacement)
+	if replacementDelta.Players[0].Lng >= movedLng {
+		t.Fatalf("replacement connection did not control player: %+v", replacementDelta.Players[0])
+	}
+
+	hub.Unregister(old)
+	broadcasts <- time.Now()
+	assertNoMessage(t, replacement)
+}
+
 func TestHubReplacementSurvivesObsoleteUnregister(t *testing.T) {
 	hub, simulations, broadcasts := newTestHub()
 	go hub.Run()

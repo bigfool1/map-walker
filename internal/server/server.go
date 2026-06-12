@@ -1,13 +1,10 @@
 package server
 
 import (
-	"context"
 	"net/http"
 
 	"map-walker/internal/auth"
 	"map-walker/internal/realtime"
-
-	"github.com/coder/websocket"
 )
 
 type Server struct {
@@ -39,27 +36,4 @@ func (s *Server) Routes() http.Handler {
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
-}
-
-func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	playerID := r.URL.Query().Get("playerId")
-	if playerID == "" {
-		http.Error(w, "playerId is required", http.StatusBadRequest)
-		return
-	}
-
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	})
-	if err != nil {
-		return
-	}
-
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
-	client := realtime.NewClient(playerID, conn, s.hub)
-	client.Run(ctx)
-
-	_ = conn.Close(websocket.StatusNormalClosure, "connection closed")
 }
