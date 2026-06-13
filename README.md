@@ -2,8 +2,9 @@
 
 A small server-authoritative multiplayer movement demo built with Go and
 Leaflet. Browsers register an account, then send keyboard or touch input; the Go
-server owns player positions, simulates movement at 20 Hz, broadcasts changed
-players at 10 Hz, and persists positions to SQLite every 5 seconds.
+server owns player positions, simulates movement at 20 Hz, replicates visible
+changes at 10 Hz via a grid-based AOI spatial index, and persists positions to
+SQLite every 5 seconds.
 
 ## Quick Start
 
@@ -29,12 +30,12 @@ for reconnect testing) to see multiplayer.
 
 ```text
 cmd/map-walker/      — entry point, graceful shutdown
-internal/server/     — routes, static files, WebSocket upgrade, auth endpoints
-internal/realtime/   — connection lifecycle, actor loop, tickers, protocol, persistence interface
-internal/game/       — authoritative World, movement rules, snapshots, deltas
+internal/server/     — routes, static files, WebSocket upgrade, auth/appearance endpoints
+internal/realtime/   — connection lifecycle, actor loop, tickers, protocol, persistence, replication
+internal/game/       — authoritative World, movement rules, AOI spatial index, appearance
 internal/auth/       — user registration/login, session tokens, bcrypt
-internal/storage/    — SQLite/MySQL, migrations, user/session/position persistence
-web/                 — Leaflet/Amap frontend, auth card, keyboard + virtual joystick
+internal/storage/    — SQLite/MySQL, migrations, user/session/position/appearance persistence
+web/                 — Leaflet/Amap frontend, auth card, account menu, keyboard + virtual joystick
 ```
 
 ### Identity flow
@@ -53,6 +54,14 @@ simulation and broadcasts are never blocked. Genuine disconnects and logout
 trigger a synchronous final save. On reconnect, the saved position is restored.
 Same-account replacement (e.g. page refresh) keeps the in-memory position.
 
+### Area of Interest (AOI)
+
+A 600m-cell spatial grid with 500m enter / 600m leave hysteresis prevents
+boundary flicker. Each player only receives updates for visible neighbours
+within range — the 10 Hz replication cost scales with visible players, not
+total world population. Movement checks nine neighbouring cells instead of
+the full player set.
+
 ## WebSocket Protocol
 
 Client → Server:
@@ -61,16 +70,25 @@ Client → Server:
 {"type":"input","sequence":42,"up":true,"down":false,"left":false,"right":true}
 ```
 
-Server → Newly Connected Client:
+Server → Newly Connected Client (in order):
 
 ```json
-{"type":"world_snapshot","tick":1280,"players":[{"id":"UUID","lat":31.23,"lng":121.47}]}
+{"type":"self_state","tick":1280,"player":{"id":"UUID","username":"alice","lat":31.23,"lng":121.47,"appearance":{"color":"#3388ff","shape":"circle"}}}
+```
+```json
+{"type":"visible_entities_snapshot","tick":1280,"players":[{"id":"UUID","username":"bob","lat":31.24,"lng":121.48,"appearance":{"color":"#ff6600","shape":"diamond"}}]}
 ```
 
-Server → Existing Clients:
+Server → Existing Clients (10 Hz, per-client):
 
 ```json
-{"type":"players_delta","tick":1282,"players":[{"id":"UUID","lat":31.24,"lng":121.48}],"removedPlayerIds":[]}
+{"type":"replication_update","tick":1282,"positions":[{"id":"UUID","lat":31.24,"lng":121.48}],"entered":[{"id":"UUID","username":"carol","lat":31.25,"lng":121.49,"appearance":{...}}],"leftPlayerIds":["UUID"],"appearances":[{"playerId":"UUID","appearance":{...}}]}
+```
+
+Server → All Clients (on appearance change):
+
+```json
+{"type":"appearance_changed","playerId":"UUID","appearance":{"color":"#ff6600","shape":"diamond"}}
 ```
 
 Player IDs are authenticated user UUIDs — the server ignores client-supplied
@@ -84,6 +102,7 @@ player IDs.
 | `POST` | `/api/login` | No | Login and get session cookie |
 | `POST` | `/api/logout` | No | Revoke session, clear cookie |
 | `GET` | `/api/session` | No | Return current user or 401 |
+| `PUT` | `/api/appearance` | Session | Update marker color/shape |
 | `GET` | `/ws` | Session | WebSocket upgrade |
 | `GET` | `/healthz` | No | Health check |
 
