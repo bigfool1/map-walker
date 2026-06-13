@@ -299,7 +299,7 @@ silently included.
 
 ### Task 5: Add Standard Go Benchmarks And Profile Hooks
 
-- [ ] Deliver `testing.B` entry points for repeatable local comparison and
+- [x] Deliver `testing.B` entry points for repeatable local comparison and
   profile generation.
 
 **Task boundary:**
