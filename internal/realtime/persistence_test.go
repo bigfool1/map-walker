@@ -84,8 +84,8 @@ func TestHubPersistenceBatchIncludesOnlyMovedPlayers(t *testing.T) {
 	hub.Register(bob)
 	mustReceiveSnapshot(t, bob)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
-	mustReceiveDelta(t, bob)
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -119,7 +119,7 @@ func TestHubPersistenceSkipsUnchangedPlayers(t *testing.T) {
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	persistence <- time.Now()
 
@@ -138,7 +138,7 @@ func TestHubFinalSaveOnGenuineDisconnect(t *testing.T) {
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -172,7 +172,7 @@ func TestHubReplacementDoesNotFinalSave(t *testing.T) {
 	hub.Register(old)
 	mustReceiveSnapshot(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	assertNoMessage(t, old)
 
 	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -199,7 +199,7 @@ func TestHubSimulationContinuesWhilePersistenceBlocks(t *testing.T) {
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -232,7 +232,7 @@ func TestHubPersistenceUsesIncreasingSequence(t *testing.T) {
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()

@@ -44,21 +44,6 @@ type PlayerState struct {
 	Appearance Appearance `json:"appearance"`
 }
 
-type Snapshot struct {
-	Tick    uint64
-	Players []PlayerState
-}
-
-type Delta struct {
-	Tick             uint64
-	Players          []PlayerState
-	RemovedPlayerIDs []string
-}
-
-func (d Delta) HasChanges() bool {
-	return len(d.Players) > 0 || len(d.RemovedPlayerIDs) > 0
-}
-
 type player struct {
 	position     PlayerPosition
 	username     string
@@ -71,7 +56,7 @@ type World struct {
 	config           Config
 	players          map[string]*player
 	tick             uint64
-	dirtyPlayerIDs   map[string]struct{}
+	movedPlayerIDs   map[string]struct{}
 	removedPlayerIDs map[string]struct{}
 }
 
@@ -79,9 +64,13 @@ func NewWorld(config Config) *World {
 	return &World{
 		config:           config,
 		players:          map[string]*player{},
-		dirtyPlayerIDs:   map[string]struct{}{},
+		movedPlayerIDs:   map[string]struct{}{},
 		removedPlayerIDs: map[string]struct{}{},
 	}
+}
+
+func (w *World) Tick() uint64 {
+	return w.tick
 }
 
 func (w *World) SpawnLatLng() (float64, float64) {
@@ -114,7 +103,6 @@ func (w *World) AddPlayerWithState(playerID, username string, lat, lng float64, 
 		username:   username,
 		appearance: appearance,
 	}
-	w.dirtyPlayerIDs[playerID] = struct{}{}
 	delete(w.removedPlayerIDs, playerID)
 	return true
 }
@@ -130,7 +118,7 @@ func (w *World) RemovePlayer(playerID string) bool {
 	}
 
 	delete(w.players, playerID)
-	delete(w.dirtyPlayerIDs, playerID)
+	delete(w.movedPlayerIDs, playerID)
 	w.removedPlayerIDs[playerID] = struct{}{}
 	return true
 }
@@ -173,11 +161,27 @@ func (w *World) Step(deltaTime time.Duration) []string {
 
 		p.position.Lat += y * distance / metersPerDegreeLatitude
 		p.position.Lng += x * distance / metersPerDegreeLongitude(p.position.Lat)
-		w.dirtyPlayerIDs[playerID] = struct{}{}
+		w.movedPlayerIDs[playerID] = struct{}{}
 		moved = append(moved, playerID)
 	}
 	sort.Strings(moved)
 	return moved
+}
+
+func (w *World) PlayerIDs() []string {
+	return w.playersKeys()
+}
+
+func (w *World) PlayerState(playerID string) (PlayerState, bool) {
+	p, exists := w.players[playerID]
+	if !exists {
+		return PlayerState{}, false
+	}
+	return w.playerState(p), true
+}
+
+func (w *World) PlayerStates(playerIDs []string) []PlayerState {
+	return w.statesFor(playerIDs)
 }
 
 func (w *World) PlayerPosition(playerID string) (PlayerPosition, bool) {
@@ -186,6 +190,16 @@ func (w *World) PlayerPosition(playerID string) (PlayerPosition, bool) {
 		return PlayerPosition{}, false
 	}
 	return p.position, true
+}
+
+func (w *World) PlayerPositions(playerIDs []string) []PlayerPosition {
+	positions := make([]PlayerPosition, 0, len(playerIDs))
+	for _, id := range playerIDs {
+		if p, exists := w.players[id]; exists {
+			positions = append(positions, p.position)
+		}
+	}
+	return positions
 }
 
 func (w *World) PlayerAppearance(playerID string) (Appearance, bool) {
@@ -208,26 +222,16 @@ func (w *World) UpdatePlayerAppearance(playerID string, appearance Appearance) (
 	return true, true
 }
 
-func (w *World) Snapshot() Snapshot {
-	return Snapshot{
-		Tick:    w.tick,
-		Players: w.statesFor(w.playersKeys()),
-	}
+func (w *World) TakeMovedPlayerIDs() []string {
+	ids := setKeys(w.movedPlayerIDs)
+	clear(w.movedPlayerIDs)
+	return ids
 }
 
-func (w *World) TakeDelta() Delta {
-	playerIDs := setKeys(w.dirtyPlayerIDs)
-	removedIDs := setKeys(w.removedPlayerIDs)
-
-	delta := Delta{
-		Tick:             w.tick,
-		Players:          w.statesFor(playerIDs),
-		RemovedPlayerIDs: removedIDs,
-	}
-
-	clear(w.dirtyPlayerIDs)
+func (w *World) TakeRemovedPlayerIDs() []string {
+	ids := setKeys(w.removedPlayerIDs)
 	clear(w.removedPlayerIDs)
-	return delta
+	return ids
 }
 
 func (w *World) PlayerCount() int {
@@ -243,17 +247,21 @@ func (w *World) playersKeys() []string {
 	return ids
 }
 
+func (w *World) playerState(p *player) PlayerState {
+	return PlayerState{
+		ID:         p.position.ID,
+		Username:   p.username,
+		Lat:        p.position.Lat,
+		Lng:        p.position.Lng,
+		Appearance: p.appearance,
+	}
+}
+
 func (w *World) statesFor(ids []string) []PlayerState {
 	states := make([]PlayerState, 0, len(ids))
 	for _, id := range ids {
 		if p, exists := w.players[id]; exists {
-			states = append(states, PlayerState{
-				ID:         p.position.ID,
-				Username:   p.username,
-				Lat:        p.position.Lat,
-				Lng:        p.position.Lng,
-				Appearance: p.appearance,
-			})
+			states = append(states, w.playerState(p))
 		}
 	}
 	return states

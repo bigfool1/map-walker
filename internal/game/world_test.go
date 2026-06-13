@@ -13,12 +13,12 @@ func TestWorldAddPlayerAtUsesExplicitPosition(t *testing.T) {
 		t.Fatal("expected alice to be added")
 	}
 
-	snapshot := world.Snapshot()
-	if len(snapshot.Players) != 1 {
-		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
+	state, ok := world.PlayerState("alice")
+	if !ok {
+		t.Fatal("expected alice state")
 	}
-	if snapshot.Players[0] != (PlayerState{ID: "alice", Username: "alice", Lat: 31.5, Lng: 121.5, Appearance: DefaultAppearance()}) {
-		t.Fatalf("unexpected position: %+v", snapshot.Players[0])
+	if state != (PlayerState{ID: "alice", Username: "alice", Lat: 31.5, Lng: 121.5, Appearance: DefaultAppearance()}) {
+		t.Fatalf("unexpected position: %+v", state)
 	}
 }
 
@@ -33,15 +33,15 @@ func TestWorldAddPlayerUsesConfiguredSpawn(t *testing.T) {
 		t.Fatal("expected alice to be added")
 	}
 
-	snapshot := world.Snapshot()
-	if snapshot.Tick != 0 {
-		t.Fatalf("expected tick 0, got %d", snapshot.Tick)
+	if world.Tick() != 0 {
+		t.Fatalf("expected tick 0, got %d", world.Tick())
 	}
-	if len(snapshot.Players) != 1 {
-		t.Fatalf("expected 1 player, got %d", len(snapshot.Players))
+	state, ok := world.PlayerState("alice")
+	if !ok {
+		t.Fatal("expected alice state")
 	}
-	if snapshot.Players[0] != (PlayerState{ID: "alice", Username: "alice", Lat: 31.2304, Lng: 121.4737, Appearance: DefaultAppearance()}) {
-		t.Fatalf("unexpected spawn: %+v", snapshot.Players[0])
+	if state != (PlayerState{ID: "alice", Username: "alice", Lat: 31.2304, Lng: 121.4737, Appearance: DefaultAppearance()}) {
+		t.Fatalf("unexpected spawn: %+v", state)
 	}
 }
 
@@ -60,9 +60,9 @@ func TestWorldApplyInputRejectsOldSequence(t *testing.T) {
 	}
 
 	world.Step(time.Second)
-	position := world.Snapshot().Players[0]
-	if position.Lng <= 121.4737 {
-		t.Fatalf("expected accepted right input to win, got %+v", position)
+	state, ok := world.PlayerState("alice")
+	if !ok || state.Lng <= 121.4737 {
+		t.Fatalf("expected accepted right input to win, got %+v", state)
 	}
 }
 
@@ -81,8 +81,8 @@ func TestWorldMovementDependsOnDurationNotInputFrequency(t *testing.T) {
 		manyMessages.Step(50 * time.Millisecond)
 	}
 
-	one := oneMessage.Snapshot().Players[0]
-	many := manyMessages.Snapshot().Players[0]
+	one, _ := oneMessage.PlayerState("alice")
+	many, _ := manyMessages.PlayerState("alice")
 	if !almostEqual(one.Lat, many.Lat) || !almostEqual(one.Lng, many.Lng) {
 		t.Fatalf("input frequency changed movement: one=%+v many=%+v", one, many)
 	}
@@ -99,8 +99,10 @@ func TestWorldDiagonalSpeedMatchesStraightSpeed(t *testing.T) {
 	diagonal.ApplyInput("alice", InputState{Sequence: 1, Up: true, Right: true})
 	diagonal.Step(time.Second)
 
-	straightDistance := distanceMeters(testConfig().SpawnLat, testConfig().SpawnLng, straight.Snapshot().Players[0])
-	diagonalDistance := distanceMeters(testConfig().SpawnLat, testConfig().SpawnLng, diagonal.Snapshot().Players[0])
+	straightState, _ := straight.PlayerState("alice")
+	diagonalState, _ := diagonal.PlayerState("alice")
+	straightDistance := distanceMeters(testConfig().SpawnLat, testConfig().SpawnLng, straightState)
+	diagonalDistance := distanceMeters(testConfig().SpawnLat, testConfig().SpawnLng, diagonalState)
 	if math.Abs(straightDistance-diagonalDistance) > 0.01 {
 		t.Fatalf("expected equal speeds: straight=%f diagonal=%f", straightDistance, diagonalDistance)
 	}
@@ -109,7 +111,6 @@ func TestWorldDiagonalSpeedMatchesStraightSpeed(t *testing.T) {
 func TestWorldOppositeDirectionsCancel(t *testing.T) {
 	world := newTestWorld()
 	world.AddPlayer("alice")
-	world.TakeDelta()
 	world.ApplyInput("alice", InputState{
 		Sequence: 1,
 		Up:       true,
@@ -120,29 +121,63 @@ func TestWorldOppositeDirectionsCancel(t *testing.T) {
 
 	world.Step(time.Second)
 
-	if delta := world.TakeDelta(); delta.HasChanges() {
-		t.Fatalf("expected no movement delta, got %+v", delta)
+	if moved := world.TakeMovedPlayerIDs(); len(moved) != 0 {
+		t.Fatalf("expected no moved players, got %+v", moved)
 	}
 }
 
-func TestWorldMergesSeveralStepsIntoLatestDelta(t *testing.T) {
+func TestWorldAccumulatesMovedPlayersAcrossSimulationTicks(t *testing.T) {
 	world := newTestWorld()
 	world.AddPlayer("alice")
-	world.TakeDelta()
+	world.AddPlayer("bob")
+	world.ApplyInput("alice", InputState{Sequence: 1, Up: true})
+	world.ApplyInput("bob", InputState{Sequence: 1, Right: true})
+
+	world.Step(50 * time.Millisecond)
+	world.Step(50 * time.Millisecond)
+
+	moved := world.TakeMovedPlayerIDs()
+	if !slicesEqual(moved, []string{"alice", "bob"}) {
+		t.Fatalf("moved = %+v, want [alice bob]", moved)
+	}
+	if next := world.TakeMovedPlayerIDs(); len(next) != 0 {
+		t.Fatalf("expected one-time consumption, got %+v", next)
+	}
+}
+
+func TestWorldMergesSeveralStepsIntoLatestReplicationState(t *testing.T) {
+	world := newTestWorld()
+	world.AddPlayer("alice")
 	world.ApplyInput("alice", InputState{Sequence: 1, Up: true})
 
 	world.Step(50 * time.Millisecond)
 	world.Step(50 * time.Millisecond)
 
-	delta := world.TakeDelta()
-	if delta.Tick != 2 {
-		t.Fatalf("expected tick 2, got %d", delta.Tick)
+	moved := world.TakeMovedPlayerIDs()
+	if !slicesEqual(moved, []string{"alice"}) {
+		t.Fatalf("expected one moved alice, got %+v", moved)
 	}
-	if len(delta.Players) != 1 || delta.Players[0].ID != "alice" {
-		t.Fatalf("expected one latest alice position, got %+v", delta.Players)
+	if world.Tick() != 2 {
+		t.Fatalf("expected tick 2, got %d", world.Tick())
 	}
-	if next := world.TakeDelta(); next.HasChanges() {
-		t.Fatalf("expected TakeDelta to clear changes, got %+v", next)
+
+	state, ok := world.PlayerState("alice")
+	if !ok || state.Lat <= testConfig().SpawnLat {
+		t.Fatalf("expected latest position after two steps, got %+v", state)
+	}
+}
+
+func TestWorldStaticPlayersAreNotReportedAsMoved(t *testing.T) {
+	world := newTestWorld()
+	world.AddPlayer("alice")
+	world.AddPlayer("bob")
+	world.ApplyInput("alice", InputState{Sequence: 1, Up: true})
+
+	world.Step(50 * time.Millisecond)
+
+	moved := world.TakeMovedPlayerIDs()
+	if !slicesEqual(moved, []string{"alice"}) {
+		t.Fatalf("moved = %+v, want [alice]", moved)
 	}
 }
 
@@ -151,12 +186,51 @@ func TestWorldRemovePlayerReportsOnlyRemoval(t *testing.T) {
 	world.AddPlayer("alice")
 	world.RemovePlayer("alice")
 
-	delta := world.TakeDelta()
-	if len(delta.Players) != 0 {
-		t.Fatalf("removed player must not remain dirty: %+v", delta.Players)
+	if moved := world.TakeMovedPlayerIDs(); len(moved) != 0 {
+		t.Fatalf("removed player must not remain moved: %+v", moved)
 	}
-	if len(delta.RemovedPlayerIDs) != 1 || delta.RemovedPlayerIDs[0] != "alice" {
-		t.Fatalf("unexpected removals: %+v", delta.RemovedPlayerIDs)
+	removed := world.TakeRemovedPlayerIDs()
+	if !slicesEqual(removed, []string{"alice"}) {
+		t.Fatalf("unexpected removals: %+v", removed)
+	}
+}
+
+func TestWorldPlayerStateAndPositionLookups(t *testing.T) {
+	world := NewWorld(testConfig())
+	custom := Appearance{Color: "#ff6600", Shape: ShapeDiamond}
+	world.AddPlayerWithState("alice", "Alice", 31.5, 121.5, custom)
+
+	state, ok := world.PlayerState("alice")
+	if !ok || state.Username != "Alice" || state.Appearance != custom {
+		t.Fatalf("unexpected complete state: ok=%v state=%+v", ok, state)
+	}
+
+	position, ok := world.PlayerPosition("alice")
+	if !ok || position != (PlayerPosition{ID: "alice", Lat: 31.5, Lng: 121.5}) {
+		t.Fatalf("unexpected position-only state: %+v", position)
+	}
+
+	if _, ok := world.PlayerState("missing"); ok {
+		t.Fatal("expected missing player lookup to fail")
+	}
+	if _, ok := world.PlayerPosition("missing"); ok {
+		t.Fatal("expected missing position lookup to fail")
+	}
+}
+
+func TestWorldPlayerStatesAndPositionsFilterMissingPlayers(t *testing.T) {
+	world := newTestWorld()
+	world.AddPlayerWithState("alice", "Alice", 31.1, 121.1, DefaultAppearance())
+	world.AddPlayerWithState("bob", "Bob", 31.2, 121.2, DefaultAppearance())
+
+	states := world.PlayerStates([]string{"bob", "missing", "alice"})
+	if len(states) != 2 || states[0].ID != "bob" || states[1].ID != "alice" {
+		t.Fatalf("unexpected states: %+v", states)
+	}
+
+	positions := world.PlayerPositions([]string{"alice", "missing"})
+	if len(positions) != 1 || positions[0].ID != "alice" {
+		t.Fatalf("unexpected positions: %+v", positions)
 	}
 }
 
@@ -173,9 +247,9 @@ func TestWorldAddPlayerWithAppearance(t *testing.T) {
 		t.Fatalf("unexpected appearance: ok=%v appearance=%+v", ok, appearance)
 	}
 
-	snapshot := world.Snapshot()
-	if snapshot.Players[0].Appearance != custom {
-		t.Fatalf("snapshot appearance = %+v, want %+v", snapshot.Players[0].Appearance, custom)
+	state, ok := world.PlayerState("alice")
+	if !ok || state.Appearance != custom {
+		t.Fatalf("player state appearance = %+v, want %+v", state.Appearance, custom)
 	}
 }
 
@@ -205,36 +279,47 @@ func TestWorldUpdatePlayerAppearance(t *testing.T) {
 	}
 }
 
-func TestWorldMovementPreservesAppearance(t *testing.T) {
+func TestWorldMovementPreservesUsernameAndAppearance(t *testing.T) {
 	world := NewWorld(testConfig())
 
 	custom := Appearance{Color: "#ff6600", Shape: ShapeSquare}
-	world.AddPlayerWithAppearance("alice", testConfig().SpawnLat, testConfig().SpawnLng, custom)
-	world.TakeDelta()
+	world.AddPlayerWithState("alice", "Alice", testConfig().SpawnLat, testConfig().SpawnLng, custom)
 	world.ApplyInput("alice", InputState{Sequence: 1, Right: true})
 	world.Step(time.Second)
 
-	position, ok := world.PlayerPosition("alice")
+	state, ok := world.PlayerState("alice")
 	if !ok {
-		t.Fatal("expected alice position")
+		t.Fatal("expected alice state")
 	}
-	if position.Lng <= testConfig().SpawnLng {
-		t.Fatalf("expected movement, got %+v", position)
+	if state.Username != "Alice" {
+		t.Fatalf("username after movement = %q, want Alice", state.Username)
+	}
+	if state.Appearance != custom {
+		t.Fatalf("appearance after movement = %+v, want %+v", state.Appearance, custom)
+	}
+	if state.Lng <= testConfig().SpawnLng {
+		t.Fatalf("expected movement, got %+v", state)
 	}
 
-	appearance, ok := world.PlayerAppearance("alice")
-	if !ok || appearance != custom {
-		t.Fatalf("appearance after movement = %+v, want %+v", appearance, custom)
+	position, ok := world.PlayerPosition("alice")
+	if !ok || position.Lat != state.Lat || position.Lng != state.Lng {
+		t.Fatalf("position = %+v, want lat/lng from %+v", position, state)
 	}
+}
 
-	delta := world.TakeDelta()
-	if len(delta.Players) != 1 {
-		t.Fatalf("expected one delta player, got %+v", delta.Players)
+func TestWorldRemovedPlayersAreUnavailable(t *testing.T) {
+	world := newTestWorld()
+	world.AddPlayer("alice")
+	world.RemovePlayer("alice")
+
+	if world.HasPlayer("alice") {
+		t.Fatal("expected alice removed")
 	}
-	if delta.Players[0].ID != position.ID ||
-		delta.Players[0].Lat != position.Lat ||
-		delta.Players[0].Lng != position.Lng {
-		t.Fatalf("delta position = %+v, want %+v", delta.Players[0], position)
+	if _, ok := world.PlayerState("alice"); ok {
+		t.Fatal("expected removed player state lookup to fail")
+	}
+	if _, ok := world.PlayerPosition("alice"); ok {
+		t.Fatal("expected removed player position lookup to fail")
 	}
 }
 

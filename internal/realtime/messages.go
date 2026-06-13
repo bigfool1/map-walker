@@ -51,20 +51,20 @@ type PlayersDeltaMessage struct {
 	RemovedPlayerIDs []string            `json:"removedPlayerIds"`
 }
 
-func EncodeWorldSnapshot(snapshot game.Snapshot) ([]byte, error) {
+func EncodeWorldSnapshot(tick uint64, players []game.PlayerState) ([]byte, error) {
 	return json.Marshal(WorldSnapshotMessage{
 		Type:    MessageTypeWorldSnapshot,
-		Tick:    snapshot.Tick,
-		Players: snapshot.Players,
+		Tick:    tick,
+		Players: players,
 	})
 }
 
-func EncodePlayersDelta(delta game.Delta) ([]byte, error) {
+func EncodePlayersDelta(tick uint64, players []game.PlayerState, removedPlayerIDs []string) ([]byte, error) {
 	return json.Marshal(PlayersDeltaMessage{
 		Type:             MessageTypePlayersDelta,
-		Tick:             delta.Tick,
-		Players:          delta.Players,
-		RemovedPlayerIDs: delta.RemovedPlayerIDs,
+		Tick:             tick,
+		Players:          players,
+		RemovedPlayerIDs: removedPlayerIDs,
 	})
 }
 

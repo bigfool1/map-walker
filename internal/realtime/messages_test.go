@@ -38,16 +38,13 @@ func TestDecodeInputMessageIgnoresCoordinates(t *testing.T) {
 }
 
 func TestEncodeWorldSnapshot(t *testing.T) {
-	data, err := EncodeWorldSnapshot(game.Snapshot{
-		Tick: 7,
-		Players: []game.PlayerState{
-			{
-				ID:         "alice",
-				Username:   "Alice",
-				Lat:        31.2304,
-				Lng:        121.4737,
-				Appearance: game.Appearance{Color: "#3388ff", Shape: game.ShapeCircle},
-			},
+	data, err := EncodeWorldSnapshot(7, []game.PlayerState{
+		{
+			ID:         "alice",
+			Username:   "Alice",
+			Lat:        31.2304,
+			Lng:        121.4737,
+			Appearance: game.Appearance{Color: "#3388ff", Shape: game.ShapeCircle},
 		},
 	})
 	if err != nil {
@@ -76,13 +73,9 @@ func TestEncodeAppearanceChanged(t *testing.T) {
 }
 
 func TestEncodePlayersDelta(t *testing.T) {
-	data, err := EncodePlayersDelta(game.Delta{
-		Tick: 9,
-		Players: []game.PlayerState{
-			{ID: "alice", Username: "alice", Lat: 31.2305, Lng: 121.4738, Appearance: game.DefaultAppearance()},
-		},
-		RemovedPlayerIDs: []string{"bob"},
-	})
+	data, err := EncodePlayersDelta(9, []game.PlayerState{
+		{ID: "alice", Username: "alice", Lat: 31.2305, Lng: 121.4738, Appearance: game.DefaultAppearance()},
+	}, []string{"bob"})
 	if err != nil {
 		t.Fatalf("encode failed: %v", err)
 	}

@@ -364,7 +364,7 @@ func (h *Hub) submitFinalPosition(userID string) {
 }
 
 func (h *Hub) sendSnapshot(client ClientSender) {
-	data, err := EncodeWorldSnapshot(h.world.Snapshot())
+	data, err := EncodeWorldSnapshot(h.world.Tick(), h.world.PlayerStates(h.world.PlayerIDs()))
 	if err != nil {
 		log.Printf("encode world snapshot failed: %v", err)
 		h.removeClient(client)
@@ -376,19 +376,21 @@ func (h *Hub) sendSnapshot(client ClientSender) {
 }
 
 func (h *Hub) broadcastDelta() {
-	delta := h.world.TakeDelta()
-	if !delta.HasChanges() {
+	movedIDs := h.world.TakeMovedPlayerIDs()
+	removedIDs := h.world.TakeRemovedPlayerIDs()
+	if len(movedIDs) == 0 && len(removedIDs) == 0 {
 		return
 	}
 
-	data, err := EncodePlayersDelta(delta)
+	players := h.world.PlayerStates(movedIDs)
+	data, err := EncodePlayersDelta(h.world.Tick(), players, removedIDs)
 	if err != nil {
 		log.Printf("encode players delta failed: %v", err)
 		return
 	}
 
 	h.stats.deltaBroadcasts++
-	h.stats.changedPlayers += uint64(len(delta.Players))
+	h.stats.changedPlayers += uint64(len(players))
 	h.stats.deltaBytes += uint64(len(data))
 
 	for _, client := range h.clients {

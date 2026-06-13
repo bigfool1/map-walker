@@ -8,7 +8,7 @@ import (
 	"map-walker/internal/game"
 )
 
-func TestHubRegisterSendsSnapshotAndDefersDelta(t *testing.T) {
+func TestHubRegisterSendsSnapshotWithoutStaticDelta(t *testing.T) {
 	hub, _, broadcasts, _ := newTestHub()
 	go hub.Run()
 	defer hub.Stop()
@@ -24,10 +24,7 @@ func TestHubRegisterSendsSnapshotAndDefersDelta(t *testing.T) {
 	assertNoMessage(t, alice)
 
 	broadcasts <- time.Now()
-	delta := mustReceiveDelta(t, alice)
-	if len(delta.Players) != 1 || delta.Players[0].ID != "alice" {
-		t.Fatalf("expected deferred alice delta, got %+v", delta)
-	}
+	assertNoMessage(t, alice)
 }
 
 func TestHubSimulationDoesNotBroadcastUntilBroadcastTick(t *testing.T) {
@@ -38,8 +35,6 @@ func TestHubSimulationDoesNotBroadcastUntilBroadcastTick(t *testing.T) {
 	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
-	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -61,7 +56,7 @@ func TestHubEmptyBroadcastTickSendsNothing(t *testing.T) {
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
@@ -79,8 +74,8 @@ func TestHubDisconnectAppearsInNextDelta(t *testing.T) {
 	hub.Register(bob)
 	mustReceiveSnapshot(t, bob)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
-	mustReceiveDelta(t, bob)
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
 
 	hub.Unregister(bob)
 	assertNoMessage(t, alice)
@@ -147,7 +142,7 @@ func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
 	hub.Register(old)
 	mustReceiveSnapshot(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	assertNoMessage(t, old)
 
 	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -173,7 +168,7 @@ func TestHubReplacementRetainsInMemoryPosition(t *testing.T) {
 	hub.Register(old)
 	mustReceiveSnapshot(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	assertNoMessage(t, old)
 
 	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
@@ -221,7 +216,7 @@ func TestHubReplacementSurvivesObsoleteUnregister(t *testing.T) {
 	hub.Register(old)
 	mustReceiveSnapshot(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	assertNoMessage(t, old)
 
 	hub.Register(replacement)
 	mustReceiveSnapshot(t, replacement)
@@ -251,7 +246,7 @@ func TestHubRejectsInputFromReplacedConnection(t *testing.T) {
 	hub.Register(old)
 	mustReceiveSnapshot(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	assertNoMessage(t, old)
 
 	hub.ApplyInput(old, game.InputState{Sequence: 1, Right: true})
 	hub.Register(replacement)
@@ -288,7 +283,10 @@ func TestHubDropsSlowClient(t *testing.T) {
 	hub.Register(fast)
 	mustReceiveSnapshot(t, fast)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, fast)
+	delta := mustReceiveDelta(t, fast)
+	if len(delta.RemovedPlayerIDs) != 1 || delta.RemovedPlayerIDs[0] != "slow" {
+		t.Fatalf("expected slow removal broadcast, got %+v", delta)
+	}
 
 	select {
 	case <-slow.done:
@@ -327,8 +325,8 @@ func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
 	hub.Register(bob)
 	mustReceiveSnapshot(t, bob)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
-	mustReceiveDelta(t, bob)
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
 	if !hub.UpdateAppearance("alice", updated) {
@@ -358,7 +356,7 @@ func TestHubUpdateAppearanceUnchangedDoesNotBroadcast(t *testing.T) {
 	hub.Register(alice)
 	snapshot := mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	if !hub.UpdateAppearance("alice", snapshot.Players[0].Appearance) {
 		t.Fatal("unchanged appearance update failed")
@@ -375,7 +373,7 @@ func TestHubUpdateAppearanceOfflineUserSucceedsWithoutBroadcast(t *testing.T) {
 	hub.Register(alice)
 	mustReceiveSnapshot(t, alice)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
+	assertNoMessage(t, alice)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeTriangle}
 	if !hub.UpdateAppearance("offline-user", updated) {
@@ -403,7 +401,7 @@ func TestHubReplacementRetainsInMemoryAppearance(t *testing.T) {
 	hub.Register(old)
 	initial := mustReceiveSnapshot(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	assertNoMessage(t, old)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
 	if !hub.UpdateAppearance("alice", updated) {
@@ -433,8 +431,8 @@ func TestHubDisconnectUserRemovesPlayer(t *testing.T) {
 	hub.Register(bob)
 	mustReceiveSnapshot(t, bob)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, alice)
-	mustReceiveDelta(t, bob)
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
 
 	hub.DisconnectUser("alice")
 
