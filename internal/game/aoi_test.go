@@ -26,7 +26,7 @@ func TestAOIOriginConversionAndCellCoordinates(t *testing.T) {
 		t.Fatalf("negative cell = %+v, want (-2, -3)", negativeCell)
 	}
 
-	lat, lng := config.localToLatLng(300, -400)
+	lat, lng := config.LocalToLatLng(300, -400)
 	roundTripX, roundTripY := config.latLngToLocal(lat, lng)
 	if !almostEqualLocal(roundTripX, 300) || !almostEqualLocal(roundTripY, -400) {
 		t.Fatalf("round trip local coords = (%v, %v), want (300, -400)", roundTripX, roundTripY)
@@ -46,13 +46,13 @@ func TestAOIMoveWithinAndAcrossCells(t *testing.T) {
 		t.Fatalf("alice initial cell = %+v, want (0, 0)", cell)
 	}
 
-	lat, lng := aoi.config.localToLatLng(100, 100)
+	lat, lng := aoi.config.LocalToLatLng(100, 100)
 	aoi.Move("alice", lat, lng)
 	if cell, ok := aoi.Cell("alice"); !ok || cell != (CellCoord{0, 0}) {
 		t.Fatalf("alice same-cell move cell = %+v, want (0, 0)", cell)
 	}
 
-	lat, lng = aoi.config.localToLatLng(700, 50)
+	lat, lng = aoi.config.LocalToLatLng(700, 50)
 	aoi.Move("alice", lat, lng)
 	if cell, ok := aoi.Cell("alice"); !ok || cell != (CellCoord{1, 0}) {
 		t.Fatalf("alice cross-cell move cell = %+v, want (1, 0)", cell)
@@ -312,11 +312,11 @@ func newTestAOI() *AOIIndex {
 }
 
 func localLatLng(config AOIConfig, localX, localY float64) (float64, float64) {
-	return config.localToLatLng(localX, localY)
+	return config.LocalToLatLng(localX, localY)
 }
 
 func (a *AOIIndex) isSymmetricVisible(playerA, playerB string) bool {
-	return a.isVisible(playerA, playerB) && a.isVisible(playerB, playerA)
+	return a.IsVisible(playerA, playerB) && a.IsVisible(playerB, playerA)
 }
 
 func slicesEqual(a, b []string) bool {

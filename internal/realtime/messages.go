@@ -11,10 +11,10 @@ import (
 var ErrEmptyReplicationUpdate = errors.New("empty replication update")
 
 const (
-	MessageTypeInput                    = "input"
-	MessageTypeSelfState                = "self_state"
-	MessageTypeVisibleEntitiesSnapshot  = "visible_entities_snapshot"
-	MessageTypeReplicationUpdate        = "replication_update"
+	MessageTypeInput                   = "input"
+	MessageTypeSelfState               = "self_state"
+	MessageTypeVisibleEntitiesSnapshot = "visible_entities_snapshot"
+	MessageTypeReplicationUpdate       = "replication_update"
 )
 
 type InputMessage struct {
@@ -54,7 +54,7 @@ type SelfPosition struct {
 }
 
 type PlayerAppearanceUpdate struct {
-	PlayerID   string         `json:"playerId"`
+	PlayerID   string          `json:"playerId"`
 	Appearance game.Appearance `json:"appearance"`
 }
 

@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	simulationInterval   = 50 * time.Millisecond
-	broadcastInterval    = 100 * time.Millisecond
-	persistenceInterval  = 5 * time.Second
-	statsInterval        = time.Second
+	simulationInterval  = 50 * time.Millisecond
+	broadcastInterval   = 100 * time.Millisecond
+	persistenceInterval = 5 * time.Second
+	statsInterval       = time.Second
 )
 
 type ClientSender interface {
@@ -57,12 +57,12 @@ type Hub struct {
 	pendingLeft        map[string][]string
 	pendingAppearances map[string]game.Appearance
 	disconnectUser     chan disconnectRequest
-	simulationTick    <-chan time.Time
-	broadcastTick     <-chan time.Time
-	persistenceTick   <-chan time.Time
-	statsTick         <-chan time.Time
-	stopTickers       func()
-	stats             intervalStats
+	simulationTick     <-chan time.Time
+	broadcastTick      <-chan time.Time
+	persistenceTick    <-chan time.Time
+	statsTick          <-chan time.Time
+	stopTickers        func()
+	stats              intervalStats
 }
 
 type intervalStats struct {
@@ -116,16 +116,16 @@ func newHub(
 	stopTickers func(),
 ) *Hub {
 	return &Hub{
-		world:             world,
-		aoi:               game.NewAOIIndex(game.AOIConfigFromWorld(world.Config())),
-		loadSavedPlayer:   loadSavedPlayer,
-		persister:         persister,
-		register:          make(chan ClientSender),
-		unregister:        make(chan ClientSender),
-		inputs:            make(chan inputEvent),
-		appearanceUpdates: make(chan appearanceUpdateRequest),
-		stop:              make(chan struct{}),
-		done:              make(chan struct{}),
+		world:              world,
+		aoi:                game.NewAOIIndex(game.AOIConfigFromWorld(world.Config())),
+		loadSavedPlayer:    loadSavedPlayer,
+		persister:          persister,
+		register:           make(chan ClientSender),
+		unregister:         make(chan ClientSender),
+		inputs:             make(chan inputEvent),
+		appearanceUpdates:  make(chan appearanceUpdateRequest),
+		stop:               make(chan struct{}),
+		done:               make(chan struct{}),
 		clients:            map[string]ClientSender{},
 		persistDirty:       map[string]struct{}{},
 		persistSeq:         map[string]uint64{},
@@ -133,11 +133,11 @@ func newHub(
 		pendingLeft:        map[string][]string{},
 		pendingAppearances: map[string]game.Appearance{},
 		disconnectUser:     make(chan disconnectRequest),
-		simulationTick:    simulationTick,
-		broadcastTick:     broadcastTick,
-		persistenceTick:   persistenceTick,
-		statsTick:         statsTick,
-		stopTickers:       stopTickers,
+		simulationTick:     simulationTick,
+		broadcastTick:      broadcastTick,
+		persistenceTick:    persistenceTick,
+		statsTick:          statsTick,
+		stopTickers:        stopTickers,
 	}
 }
 
@@ -313,12 +313,7 @@ func (h *Hub) clearPendingLeftForPlayer(playerID string) {
 }
 
 func (h *Hub) isVisibleTo(clientID, playerID string) bool {
-	for _, neighborID := range h.aoi.VisibleNeighbors(clientID) {
-		if neighborID == playerID {
-			return true
-		}
-	}
-	return false
+	return h.aoi.IsVisible(clientID, playerID)
 }
 
 func (h *Hub) addPlayer(userID, username string) {
@@ -372,11 +367,10 @@ func (h *Hub) removeClient(client ClientSender) {
 	}
 
 	h.world.RemovePlayer(client.ID())
+	delete(h.pendingEntered, client.ID())
+	h.clearPendingReplicationFor(client.ID())
 	delete(h.persistDirty, client.ID())
 	delete(h.persistSeq, client.ID())
-	delete(h.pendingEntered, client.ID())
-	delete(h.pendingAppearances, client.ID())
-	delete(h.pendingLeft, client.ID())
 	client.CloseSend()
 }
 
@@ -570,7 +564,9 @@ func (h *Hub) applyMovementAOIChanges(movedIDs []string) {
 			if _, connected := h.clients[neighborID]; !connected {
 				continue
 			}
-			h.pendingEntered[playerID] = state
+			if _, already := h.pendingEntered[playerID]; !already {
+				h.pendingEntered[playerID] = state
+			}
 		}
 		for _, neighborID := range changes.Left {
 			if _, connected := h.clients[neighborID]; !connected {

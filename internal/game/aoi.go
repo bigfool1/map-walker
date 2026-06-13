@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	defaultCellSizeMeters   = 600
+	defaultCellSizeMeters    = 600
 	defaultEnterRadiusMeters = 500
 	defaultLeaveRadiusMeters = 600
 )
@@ -17,11 +17,11 @@ type CellCoord struct {
 }
 
 type AOIConfig struct {
-	OriginLat          float64
-	OriginLng          float64
-	CellSizeMeters     float64
-	EnterRadiusMeters  float64
-	LeaveRadiusMeters  float64
+	OriginLat         float64
+	OriginLng         float64
+	CellSizeMeters    float64
+	EnterRadiusMeters float64
+	LeaveRadiusMeters float64
 }
 
 func AOIConfigFromWorld(config Config) AOIConfig {
@@ -40,10 +40,10 @@ type RelationshipChanges struct {
 }
 
 type AOIStats struct {
-	CandidatePairs         uint64
-	DistanceChecks         uint64
-	RelationshipsEntered   uint64
-	RelationshipsLeft      uint64
+	CandidatePairs       uint64
+	DistanceChecks       uint64
+	RelationshipsEntered uint64
+	RelationshipsLeft    uint64
 }
 
 type aoiPlayer struct {
@@ -179,7 +179,7 @@ func (a *AOIIndex) recalculateRelationships(playerID string) RelationshipChanges
 	left := make([]string, 0)
 
 	for _, candidateID := range a.nineCellCandidates(self.cell) {
-		if candidateID == playerID || a.isVisible(playerID, candidateID) {
+		if candidateID == playerID || a.IsVisible(playerID, candidateID) {
 			continue
 		}
 		a.stats.CandidatePairs++
@@ -225,13 +225,13 @@ func (a *AOIIndex) nineCellCandidates(cell CellCoord) []string {
 	return setKeys(seen)
 }
 
-func (a *AOIIndex) isVisible(playerA, playerB string) bool {
+func (a *AOIIndex) IsVisible(playerA, playerB string) bool {
 	_, exists := a.visible[playerA][playerB]
 	return exists
 }
 
 func (a *AOIIndex) addRelationship(playerA, playerB string) bool {
-	if a.isVisible(playerA, playerB) {
+	if a.IsVisible(playerA, playerB) {
 		return false
 	}
 	a.ensureVisibleSet(playerA)[playerB] = struct{}{}
@@ -240,7 +240,7 @@ func (a *AOIIndex) addRelationship(playerA, playerB string) bool {
 }
 
 func (a *AOIIndex) removeRelationship(playerA, playerB string) bool {
-	if !a.isVisible(playerA, playerB) {
+	if !a.IsVisible(playerA, playerB) {
 		return false
 	}
 	delete(a.visible[playerA], playerB)
@@ -310,10 +310,6 @@ func (c AOIConfig) LocalToLatLng(localX, localY float64) (lat, lng float64) {
 	lat = c.OriginLat + localY/metersPerDegreeLatitude
 	lng = c.OriginLng + localX/metersPerDegreeLongitude(c.OriginLat)
 	return lat, lng
-}
-
-func (c AOIConfig) localToLatLng(localX, localY float64) (lat, lng float64) {
-	return c.LocalToLatLng(localX, localY)
 }
 
 func (c AOIConfig) enterRadiusSquared() float64 {

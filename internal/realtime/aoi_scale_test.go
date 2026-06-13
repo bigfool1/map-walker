@@ -207,7 +207,7 @@ func playerLocalPosition(index int) (float64, float64) {
 	}
 	const cols = 30
 	const sparseOriginX = 10000.0
-	return sparseOriginX + float64(index%cols)*700, float64(index/cols)*700
+	return sparseOriginX + float64(index%cols)*700, float64(index/cols) * 700
 }
 
 func countDenseNeighbors(index int) int {

@@ -8,13 +8,13 @@ import (
 )
 
 type PersistenceWorker struct {
-	save    func(realtime.PositionUpdate) error
-	ordered chan []realtime.PositionUpdate
-	flush   chan chan struct{}
-	stop    chan struct{}
-	done    chan struct{}
+	save     func(realtime.PositionUpdate) error
+	ordered  chan []realtime.PositionUpdate
+	flush    chan chan struct{}
+	stop     chan struct{}
+	done     chan struct{}
 	stopOnce sync.Once
-	lastSeq map[string]uint64
+	lastSeq  map[string]uint64
 }
 
 func NewPersistenceWorker(db *DB) *PersistenceWorker {
