@@ -170,8 +170,16 @@ type Result struct {
 	ElapsedNs int64 `json:"elapsed_ns,omitempty"`
 
 	TickDuration      *DurationStats       `json:"tick_duration,omitempty"`
+	SimulationDuration *DurationStats      `json:"simulation_duration,omitempty"`
+	AOIPreparationDuration *DurationStats  `json:"aoi_preparation_duration,omitempty"`
+	CombinedTickDuration *DurationStats    `json:"combined_tick_duration,omitempty"`
+	RemainingBudget     *DurationStats     `json:"remaining_budget,omitempty"`
 	BuildDurationNs   int64                `json:"build_duration_ns,omitempty"`
+	WorldSetupDurationNs int64             `json:"world_setup_duration_ns,omitempty"`
+	AOISetupDurationNs   int64             `json:"aoi_setup_duration_ns,omitempty"`
 	BuildCheckpoints  []BuildCheckpoint    `json:"build_checkpoints,omitempty"`
+	SimulationBudgetExceededCount int      `json:"simulation_budget_exceeded_count,omitempty"`
+	AOIBudgetExceededCount        int      `json:"aoi_budget_exceeded_count,omitempty"`
 	Throughput        *ThroughputStats     `json:"throughput,omitempty"`
 	VisibilityChurn   *VisibilityChurnMetric `json:"visibility_churn,omitempty"`
 	Heap              *HeapSnapshot        `json:"heap,omitempty"`

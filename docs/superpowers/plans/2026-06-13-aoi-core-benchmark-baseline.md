@@ -244,7 +244,7 @@ silently included.
 
 ### Task 4: Implement World Plus AOI Simulation Runner
 
-- [ ] Deliver authoritative movement and AOI preparation measurements using the
+- [x] Deliver authoritative movement and AOI preparation measurements using the
   real World path.
 
 **Task boundary:**
