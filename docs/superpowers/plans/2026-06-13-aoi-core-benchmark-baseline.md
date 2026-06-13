@@ -185,7 +185,7 @@ silently included.
 
 ### Task 3: Implement AOIIndex Core Build And Tick Runners
 
-- [ ] Deliver pure AOIIndex Build and steady-state movement measurements.
+- [x] Deliver pure AOIIndex Build and steady-state movement measurements.
 
 **Task boundary:**
 

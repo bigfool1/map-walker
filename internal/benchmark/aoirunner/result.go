@@ -178,6 +178,9 @@ type Result struct {
 	GC                *GCSnapshot          `json:"gc,omitempty"`
 	RSS               *RSSSnapshot         `json:"rss,omitempty"`
 	AOI               *AOICounters         `json:"aoi,omitempty"`
+	RelationshipsBefore uint64             `json:"relationships_before,omitempty"`
+	RelationshipsAfter  uint64             `json:"relationships_after,omitempty"`
+	WorkloadHeap        *HeapSnapshot      `json:"workload_heap,omitempty"`
 
 	ProfileExecution          bool `json:"profile_execution,omitempty"`
 	ProfileRequiredExplicitGC bool `json:"profile_required_explicit_gc,omitempty"`

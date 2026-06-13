@@ -101,6 +101,14 @@ func (a *AOIIndex) TakeStats() AOIStats {
 	return stats
 }
 
+func (a *AOIIndex) VisibleRelationshipPairs() uint64 {
+	var total uint64
+	for _, neighbors := range a.visible {
+		total += uint64(len(neighbors))
+	}
+	return total / 2
+}
+
 func (a *AOIIndex) Insert(playerID string, lat, lng float64) RelationshipChanges {
 	if _, exists := a.players[playerID]; exists {
 		return RelationshipChanges{}

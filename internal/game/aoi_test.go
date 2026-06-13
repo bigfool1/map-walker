@@ -352,3 +352,24 @@ func TestAOIDistanceUsesSquaredEuclideanMeters(t *testing.T) {
 		t.Fatalf("distance = %v, want 500", dist)
 	}
 }
+
+func TestAOIVisibleRelationshipPairs(t *testing.T) {
+	aoi := newTestAOI()
+	aliceLat, aliceLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert("alice", aliceLat, aliceLng)
+	if pairs := aoi.VisibleRelationshipPairs(); pairs != 0 {
+		t.Fatalf("solo pairs=%d want 0", pairs)
+	}
+
+	bobLat, bobLng := localLatLng(aoi.config, 100, 0)
+	aoi.Insert("bob", bobLat, bobLng)
+	if pairs := aoi.VisibleRelationshipPairs(); pairs != 1 {
+		t.Fatalf("pair count=%d want 1", pairs)
+	}
+
+	carolLat, carolLng := localLatLng(aoi.config, 700, 0)
+	aoi.Insert("carol", carolLat, carolLng)
+	if pairs := aoi.VisibleRelationshipPairs(); pairs != 1 {
+		t.Fatalf("non-visible third player pairs=%d want 1", pairs)
+	}
+}
