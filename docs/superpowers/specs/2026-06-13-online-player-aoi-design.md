@@ -134,6 +134,10 @@ format.
 AOIIndex derives local meter coordinates relative to the configured Shanghai
 World origin:
 
+- The origin is provided by the server's existing `game.Config.SpawnLat` and
+  `game.Config.SpawnLng`.
+- The default origin is the current Shanghai spawn at
+  `31.2304, 121.4737`.
 - Latitude uses the existing meters-per-degree latitude conversion.
 - Longitude uses the origin latitude to calculate a fixed
   meters-per-degree-longitude scale.
@@ -142,6 +146,9 @@ World origin:
 The approximation is intended for the configured Shanghai-area World. The
 server does not prevent players from moving outside that area, but spatial
 accuracy outside the intended region is not guaranteed by this phase.
+No map provider, administrative boundary file, or Shanghai polygon is loaded.
+“Shanghai-area” describes the accuracy assumptions around the configured
+origin, not a server-enforced geographic boundary.
 
 ### Cell Grid
 
@@ -152,7 +159,17 @@ Cell size is configurable and defaults to:
 ```
 
 A Cell is identified by integer `(x, y)` coordinates derived from local meter
-coordinates.
+coordinates:
+
+```text
+cellX = floor(localX / cellSizeMeters)
+cellY = floor(localY / cellSizeMeters)
+```
+
+Cell edges are aligned with the local east-west and north-south axes. Negative
+Cell coordinates are valid. The mathematical grid can extend in every
+direction even though the local projection is intended only for the configured
+Shanghai-area World.
 
 For an enter query, a player inspects its own Cell and the eight adjacent Cells.
 With a 600m Cell and a 500m enter radius, these nine Cells contain every
