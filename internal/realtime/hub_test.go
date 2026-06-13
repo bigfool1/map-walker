@@ -516,6 +516,7 @@ func TestHubDistantPlayerDoesNotReceiveNeighborReplication(t *testing.T) {
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
+	assertNoMessage(t, alice)
 	broadcasts <- time.Now()
 
 	update := mustReceiveReplicationUpdate(t, alice)
@@ -653,6 +654,276 @@ func TestHubReplacementClearsPendingLeft(t *testing.T) {
 	assertNoMessage(t, replacement)
 }
 
+func TestHubTwoSimulationTicksOneReplication(t *testing.T) {
+	hub, simulations, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	hub.ApplyInput(alice, game.InputState{Sequence: 2, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+
+	broadcasts <- time.Now()
+	update := mustReceiveReplicationUpdate(t, alice)
+	if update.SelfPosition == nil {
+		t.Fatalf("expected one self position after two simulation ticks: %+v", update)
+	}
+	assertNoMessage(t, alice)
+}
+
+func TestHubMovementTriggersStationaryPeerEntered(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {700, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	_, bobVisible := mustReceiveInitialization(t, bob)
+	if len(bobVisible.Players) != 0 {
+		t.Fatalf("bob should start with no visible players, got %+v", bobVisible.Players)
+	}
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Left: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Left: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	joined := mustReceiveReplicationUpdate(t, alice)
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+		t.Fatalf("expected bob entered for alice, got %+v", joined)
+	}
+	if len(joined.Positions) != 0 {
+		t.Fatalf("entered player should not also appear in positions: %+v", joined)
+	}
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	if bobUpdate.SelfPosition == nil {
+		t.Fatalf("expected bob self movement, got %+v", bobUpdate)
+	}
+}
+
+func TestHubMovementExitQueuesLeft(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {400, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	left := mustReceiveReplicationUpdate(t, alice)
+	if len(left.LeftPlayerIDs) != 1 || left.LeftPlayerIDs[0] != "bob" {
+		t.Fatalf("expected bob left for alice, got %+v", left)
+	}
+	if len(left.Positions) != 0 {
+		t.Fatalf("left player should not appear in positions: %+v", left)
+	}
+}
+
+func TestHubVisibleMovementSendsPositionOnly(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.Positions) != 1 || update.Positions[0].ID != "bob" {
+		t.Fatalf("expected bob position for alice, got %+v", update)
+	}
+	if len(update.Entered) != 0 || len(update.LeftPlayerIDs) != 0 {
+		t.Fatalf("expected position-only update, got %+v", update)
+	}
+}
+
+func TestHubStaticDistantClientReceivesNoUpdate(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+		"carol": {900, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	carol := NewTestClient("carol", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	hub.Register(carol)
+	mustReceiveInitialization(t, carol)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+	assertNoMessage(t, carol)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, carol)
+}
+
+func TestHubHysteresisMovementRetainsVisibility(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {400, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.Positions) != 1 || update.Positions[0].ID != "bob" {
+		t.Fatalf("expected bob position in hysteresis band, got %+v", update)
+	}
+	if len(update.LeftPlayerIDs) != 0 {
+		t.Fatalf("hysteresis move should not emit left: %+v", update)
+	}
+}
+
+func TestHubOneMessagePerClientPerTick(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Left: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, alice)
+	mustReceiveReplicationUpdate(t, bob)
+	assertNoMessage(t, bob)
+}
+
+func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+		"slow":  {900, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	slow := NewTestClient("slow", 0)
+	hub.Register(slow)
+
+	select {
+	case <-slow.done:
+	case <-time.After(time.Second):
+		t.Fatal("expected slow client to close")
+	}
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.Positions) != 1 || update.Positions[0].ID != "bob" {
+		t.Fatalf("expected bob position after slow client removal, got %+v", update)
+	}
+}
+
 func TestHubDisconnectUserUnknownIDIsNoop(t *testing.T) {
 	hub, _, _, _ := newTestHub()
 	go hub.Run()
@@ -756,6 +1027,22 @@ func hysteresisPlayerLoader() SavedPlayerLoader {
 			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
 		}
 		return SavedPlayerLoad{}, false
+	}
+}
+
+func fixedPositionsLoader(positions map[string][2]float64) SavedPlayerLoader {
+	return func(userID string) (SavedPlayerLoad, bool) {
+		coords, ok := positions[userID]
+		if !ok {
+			return SavedPlayerLoad{}, false
+		}
+		lat, lng := localLatLng(coords[0], coords[1])
+		return SavedPlayerLoad{
+			Username:    userID,
+			Lat:         lat,
+			Lng:         lng,
+			HasPosition: true,
+		}, true
 	}
 }
 

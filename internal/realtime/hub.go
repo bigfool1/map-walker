@@ -454,13 +454,9 @@ func (h *Hub) sendInitialization(client ClientSender) {
 func (h *Hub) broadcastReplication() {
 	movedIDs := h.world.TakeMovedPlayerIDs()
 	h.world.TakeRemovedPlayerIDs()
-	for _, playerID := range movedIDs {
-		position, ok := h.world.PlayerPosition(playerID)
-		if !ok {
-			continue
-		}
-		h.aoi.Move(playerID, position.Lat, position.Lng)
-	}
+
+	visibilityBefore := h.snapshotVisibility()
+	h.applyMovementAOIChanges(movedIDs)
 
 	pendingEntered := h.takePendingEntered()
 	pendingLeft := h.takePendingLeft()
@@ -485,7 +481,10 @@ func (h *Hub) broadcastReplication() {
 		}
 
 		for _, playerID := range movedIDs {
-			if playerID == client.ID() || !h.isVisibleTo(client.ID(), playerID) {
+			if playerID == client.ID() {
+				continue
+			}
+			if !h.wasVisibleTo(visibilityBefore, client.ID(), playerID) || !h.isVisibleTo(client.ID(), playerID) {
 				continue
 			}
 			if position, ok := h.world.PlayerPosition(playerID); ok {
@@ -524,6 +523,54 @@ func (h *Hub) broadcastReplication() {
 
 		if sendOK := client.Send(data); !sendOK {
 			h.removeClient(client)
+		}
+	}
+}
+
+func (h *Hub) snapshotVisibility() map[string]map[string]struct{} {
+	snapshot := make(map[string]map[string]struct{}, len(h.clients))
+	for clientID := range h.clients {
+		neighbors := h.aoi.VisibleNeighbors(clientID)
+		set := make(map[string]struct{}, len(neighbors))
+		for _, neighborID := range neighbors {
+			set[neighborID] = struct{}{}
+		}
+		snapshot[clientID] = set
+	}
+	return snapshot
+}
+
+func (h *Hub) wasVisibleTo(visibilityBefore map[string]map[string]struct{}, clientID, playerID string) bool {
+	neighbors, ok := visibilityBefore[clientID]
+	if !ok {
+		return false
+	}
+	_, visible := neighbors[playerID]
+	return visible
+}
+
+func (h *Hub) applyMovementAOIChanges(movedIDs []string) {
+	for _, playerID := range movedIDs {
+		position, ok := h.world.PlayerPosition(playerID)
+		if !ok {
+			continue
+		}
+		changes := h.aoi.Move(playerID, position.Lat, position.Lng)
+		state, ok := h.world.PlayerState(playerID)
+		if !ok {
+			continue
+		}
+		for _, neighborID := range changes.Entered {
+			if _, connected := h.clients[neighborID]; !connected {
+				continue
+			}
+			h.pendingEntered[playerID] = state
+		}
+		for _, neighborID := range changes.Left {
+			if _, connected := h.clients[neighborID]; !connected {
+				continue
+			}
+			h.pendingLeft[neighborID] = append(h.pendingLeft[neighborID], playerID)
 		}
 	}
 }
