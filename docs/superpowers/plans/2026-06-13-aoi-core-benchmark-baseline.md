@@ -339,7 +339,7 @@ silently included.
 
 ### Task 6: Add The Single-Scenario Benchmark Command
 
-- [ ] Deliver a process-isolated CLI that runs one Build, Core Tick, or
+- [x] Deliver a process-isolated CLI that runs one Build, Core Tick, or
   World-plus-AOI scenario.
 
 **Task boundary:**
