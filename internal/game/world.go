@@ -69,6 +69,10 @@ func NewWorld(config Config) *World {
 	}
 }
 
+func (w *World) Config() Config {
+	return w.config
+}
+
 func (w *World) Tick() uint64 {
 	return w.tick
 }

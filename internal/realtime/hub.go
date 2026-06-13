@@ -40,6 +40,7 @@ type appearanceUpdateRequest struct {
 
 type Hub struct {
 	world              *game.World
+	aoi                *game.AOIIndex
 	loadSavedPlayer    SavedPlayerLoader
 	persister          PositionPersister
 	register           chan ClientSender
@@ -53,6 +54,7 @@ type Hub struct {
 	persistDirty       map[string]struct{}
 	persistSeq         map[string]uint64
 	pendingEntered     map[string]game.PlayerState
+	pendingLeft        map[string][]string
 	pendingAppearances map[string]game.Appearance
 	disconnectUser     chan disconnectRequest
 	simulationTick    <-chan time.Time
@@ -110,6 +112,7 @@ func newHub(
 ) *Hub {
 	return &Hub{
 		world:             world,
+		aoi:               game.NewAOIIndex(game.AOIConfigFromWorld(world.Config())),
 		loadSavedPlayer:   loadSavedPlayer,
 		persister:         persister,
 		register:          make(chan ClientSender),
@@ -122,6 +125,7 @@ func newHub(
 		persistDirty:       map[string]struct{}{},
 		persistSeq:         map[string]uint64{},
 		pendingEntered:     map[string]game.PlayerState{},
+		pendingLeft:        map[string][]string{},
 		pendingAppearances: map[string]game.Appearance{},
 		disconnectUser:     make(chan disconnectRequest),
 		simulationTick:    simulationTick,
@@ -252,17 +256,64 @@ func (h *Hub) registerClient(client ClientSender) {
 	if existing, exists := h.clients[client.ID()]; exists && existing != client {
 		existing.CloseSend()
 		h.world.ResetInput(client.ID())
-	} else if !h.world.HasPlayer(client.ID()) {
+		h.clients[client.ID()] = client
+		h.clearPendingReplicationFor(client.ID())
+		h.sendInitialization(client)
+		return
+	}
+
+	if !h.world.HasPlayer(client.ID()) {
 		h.addPlayer(client.ID(), client.Username())
+		h.insertPlayerIntoAOI(client.ID())
 		if len(h.clients) > 0 {
 			if state, ok := h.world.PlayerState(client.ID()); ok {
 				h.pendingEntered[client.ID()] = state
+				h.clearPendingLeftForPlayer(client.ID())
 			}
 		}
 	}
 
 	h.clients[client.ID()] = client
+	h.clearPendingReplicationFor(client.ID())
 	h.sendInitialization(client)
+}
+
+func (h *Hub) insertPlayerIntoAOI(playerID string) {
+	position, ok := h.world.PlayerPosition(playerID)
+	if !ok {
+		return
+	}
+	h.aoi.Insert(playerID, position.Lat, position.Lng)
+}
+
+func (h *Hub) clearPendingReplicationFor(playerID string) {
+	delete(h.pendingAppearances, playerID)
+	delete(h.pendingLeft, playerID)
+}
+
+func (h *Hub) clearPendingLeftForPlayer(playerID string) {
+	for clientID, leftIDs := range h.pendingLeft {
+		filtered := leftIDs[:0]
+		for _, id := range leftIDs {
+			if id != playerID {
+				filtered = append(filtered, id)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(h.pendingLeft, clientID)
+		} else {
+			h.pendingLeft[clientID] = filtered
+		}
+	}
+}
+
+func (h *Hub) isVisibleTo(clientID, playerID string) bool {
+	for _, neighborID := range h.aoi.VisibleNeighbors(clientID) {
+		if neighborID == playerID {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Hub) addPlayer(userID, username string) {
@@ -307,11 +358,20 @@ func (h *Hub) removeClient(client ClientSender) {
 
 	delete(h.clients, client.ID())
 	h.submitFinalPosition(client.ID())
+
+	changes := h.aoi.Remove(client.ID())
+	for _, neighborID := range changes.Left {
+		if _, connected := h.clients[neighborID]; connected {
+			h.pendingLeft[neighborID] = append(h.pendingLeft[neighborID], client.ID())
+		}
+	}
+
 	h.world.RemovePlayer(client.ID())
 	delete(h.persistDirty, client.ID())
 	delete(h.persistSeq, client.ID())
 	delete(h.pendingEntered, client.ID())
 	delete(h.pendingAppearances, client.ID())
+	delete(h.pendingLeft, client.ID())
 	client.CloseSend()
 }
 
@@ -379,12 +439,7 @@ func (h *Hub) sendInitialization(client ClientSender) {
 		return
 	}
 
-	visibleIDs := make([]string, 0, len(h.world.PlayerIDs()))
-	for _, playerID := range h.world.PlayerIDs() {
-		if playerID != client.ID() {
-			visibleIDs = append(visibleIDs, playerID)
-		}
-	}
+	visibleIDs := h.aoi.VisibleNeighbors(client.ID())
 	visibleData, err := EncodeVisibleEntitiesSnapshot(tick, h.world.PlayerStates(visibleIDs))
 	if err != nil {
 		log.Printf("encode visible entities snapshot failed: %v", err)
@@ -398,11 +453,20 @@ func (h *Hub) sendInitialization(client ClientSender) {
 
 func (h *Hub) broadcastReplication() {
 	movedIDs := h.world.TakeMovedPlayerIDs()
-	removedIDs := h.world.TakeRemovedPlayerIDs()
+	h.world.TakeRemovedPlayerIDs()
+	for _, playerID := range movedIDs {
+		position, ok := h.world.PlayerPosition(playerID)
+		if !ok {
+			continue
+		}
+		h.aoi.Move(playerID, position.Lat, position.Lng)
+	}
+
 	pendingEntered := h.takePendingEntered()
+	pendingLeft := h.takePendingLeft()
 	pendingAppearances := h.takePendingAppearances()
 
-	if len(movedIDs) == 0 && len(removedIDs) == 0 && len(pendingEntered) == 0 && len(pendingAppearances) == 0 {
+	if len(movedIDs) == 0 && len(pendingEntered) == 0 && len(pendingLeft) == 0 && len(pendingAppearances) == 0 {
 		return
 	}
 
@@ -411,7 +475,7 @@ func (h *Hub) broadcastReplication() {
 
 	for _, client := range h.clients {
 		changes := ReplicationChanges{
-			LeftPlayerIDs: removedIDs,
+			LeftPlayerIDs: pendingLeft[client.ID()],
 		}
 
 		if setContains(movedSet, client.ID()) {
@@ -421,7 +485,7 @@ func (h *Hub) broadcastReplication() {
 		}
 
 		for _, playerID := range movedIDs {
-			if playerID == client.ID() {
+			if playerID == client.ID() || !h.isVisibleTo(client.ID(), playerID) {
 				continue
 			}
 			if position, ok := h.world.PlayerPosition(playerID); ok {
@@ -430,12 +494,15 @@ func (h *Hub) broadcastReplication() {
 		}
 
 		for _, state := range pendingEntered {
-			if state.ID != client.ID() {
+			if state.ID != client.ID() && h.isVisibleTo(client.ID(), state.ID) {
 				changes.Entered = append(changes.Entered, state)
 			}
 		}
 
 		for playerID, appearance := range pendingAppearances {
+			if playerID != client.ID() && !h.isVisibleTo(client.ID(), playerID) {
+				continue
+			}
 			changes.Appearances = append(changes.Appearances, PlayerAppearanceUpdate{
 				PlayerID:   playerID,
 				Appearance: appearance,
@@ -459,6 +526,18 @@ func (h *Hub) broadcastReplication() {
 			h.removeClient(client)
 		}
 	}
+}
+
+func (h *Hub) takePendingLeft() map[string][]string {
+	if len(h.pendingLeft) == 0 {
+		return nil
+	}
+	left := make(map[string][]string, len(h.pendingLeft))
+	for clientID, playerIDs := range h.pendingLeft {
+		left[clientID] = append([]string(nil), playerIDs...)
+	}
+	clear(h.pendingLeft)
+	return left
 }
 
 func (h *Hub) takePendingEntered() []game.PlayerState {

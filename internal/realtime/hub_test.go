@@ -285,17 +285,15 @@ func TestHubDropsSlowClient(t *testing.T) {
 	hub.Register(slow)
 	hub.Register(fast)
 	mustReceiveInitialization(t, fast)
-	broadcasts <- time.Now()
-	update := mustReceiveReplicationUpdate(t, fast)
-	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != "slow" {
-		t.Fatalf("expected slow removal broadcast, got %+v", update)
-	}
 
 	select {
 	case <-slow.done:
 	case <-time.After(time.Second):
 		t.Fatal("expected slow client to close")
 	}
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, fast)
 }
 
 func TestHubMethodsReturnAfterStop(t *testing.T) {
@@ -457,6 +455,204 @@ func TestHubDisconnectUserRemovesPlayer(t *testing.T) {
 	}
 }
 
+func TestHubFirstConnectionSeesOnlyNearbyPlayers(t *testing.T) {
+	hub, _, _, _ := newTestHubWithLoader(distantPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	_, aliceVisible := mustReceiveInitialization(t, alice)
+	if len(aliceVisible.Players) != 0 {
+		t.Fatalf("alice should see no players alone, got %+v", aliceVisible.Players)
+	}
+
+	hub.Register(bob)
+	_, bobVisible := mustReceiveInitialization(t, bob)
+	if len(bobVisible.Players) != 0 {
+		t.Fatalf("bob should not see distant alice, got %+v", bobVisible.Players)
+	}
+}
+
+func TestHubNearbyNeighborReceivesEnteredOnNextTick(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHubWithLoader(nearbyPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	hub.Register(bob)
+	_, bobVisible := mustReceiveInitialization(t, bob)
+	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != "alice" {
+		t.Fatalf("bob should see alice in snapshot, got %+v", bobVisible.Players)
+	}
+
+	broadcasts <- time.Now()
+	joined := mustReceiveReplicationUpdate(t, alice)
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+		t.Fatalf("expected bob entered for alice, got %+v", joined)
+	}
+	assertNoMessage(t, bob)
+}
+
+func TestHubDistantPlayerDoesNotReceiveNeighborReplication(t *testing.T) {
+	hub, simulations, broadcasts, _ := newTestHubWithLoader(distantPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if update.SelfPosition == nil {
+		t.Fatalf("expected alice self movement, got %+v", update)
+	}
+	assertNoMessage(t, bob)
+}
+
+func TestHubReplacementRetainsHysteresisVisibility(t *testing.T) {
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), hysteresisPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	_, bobVisible := mustReceiveInitialization(t, bob)
+	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != "alice" {
+		t.Fatalf("bob should see alice, got %+v", bobVisible.Players)
+	}
+
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+	moved := mustReceiveReplicationUpdate(t, alice)
+	if len(moved.Positions) != 1 || moved.Positions[0].ID != "bob" {
+		t.Fatalf("expected bob position for alice, got %+v", moved)
+	}
+
+	replacement := NewTestClient("bob", 8)
+	hub.Register(replacement)
+	_, replacementVisible := mustReceiveInitialization(t, replacement)
+	if len(replacementVisible.Players) != 1 || replacementVisible.Players[0].ID != "alice" {
+		t.Fatalf("replacement should retain alice in hysteresis band, got %+v", replacementVisible.Players)
+	}
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+}
+
+func TestHubTrueOfflineReconnectRebuildsNearbyRelationshipsOnly(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHubWithLoader(nearbyPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.Unregister(bob)
+	broadcasts <- time.Now()
+	left := mustReceiveReplicationUpdate(t, alice)
+	if len(left.LeftPlayerIDs) != 1 || left.LeftPlayerIDs[0] != "bob" {
+		t.Fatalf("expected bob left for alice, got %+v", left)
+	}
+
+	bobAgain := NewTestClient("bob", 8)
+	hub.Register(bobAgain)
+	_, bobVisible := mustReceiveInitialization(t, bobAgain)
+	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != "alice" {
+		t.Fatalf("reconnect should rebuild nearby visibility, got %+v", bobVisible.Players)
+	}
+
+	broadcasts <- time.Now()
+	joined := mustReceiveReplicationUpdate(t, alice)
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+		t.Fatalf("expected bob entered for alice after reconnect, got %+v", joined)
+	}
+}
+
+func TestHubTrueOfflineReconnectSkipsDistantPlayers(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHubWithLoader(distantPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+
+	hub.Unregister(bob)
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+
+	bobAgain := NewTestClient("bob", 8)
+	hub.Register(bobAgain)
+	_, bobVisible := mustReceiveInitialization(t, bobAgain)
+	if len(bobVisible.Players) != 0 {
+		t.Fatalf("distant reconnect should see no players, got %+v", bobVisible.Players)
+	}
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+}
+
+func TestHubReplacementClearsPendingLeft(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHubWithLoader(nearbyPlayerLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.Unregister(bob)
+	replacement := NewTestClient("bob", 8)
+	hub.Register(replacement)
+	mustReceiveInitialization(t, replacement)
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, replacement)
+}
+
 func TestHubDisconnectUserUnknownIDIsNoop(t *testing.T) {
 	hub, _, _, _ := newTestHub()
 	go hub.Run()
@@ -487,10 +683,14 @@ func newTestHub() (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 }
 
 func newTestHubWithLoader(loader SavedPlayerLoader, persister PositionPersister) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
+	return newTestHubWithConfig(testWorldConfig(), loader, persister)
+}
+
+func newTestHubWithConfig(config game.Config, loader SavedPlayerLoader, persister PositionPersister) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 	simulations := make(chan time.Time, 8)
 	broadcasts := make(chan time.Time, 8)
 	persistence := make(chan time.Time, 8)
-	world := game.NewWorld(testWorldConfig())
+	world := game.NewWorld(config)
 	hub := newHub(world, loader, persister, simulations, broadcasts, persistence, nil, func() {})
 	return hub, simulations, broadcasts, persistence
 }
@@ -500,6 +700,62 @@ func testWorldConfig() game.Config {
 		SpawnLat:             31.2304,
 		SpawnLng:             121.4737,
 		SpeedMetersPerSecond: 12,
+	}
+}
+
+func fastTestWorldConfig() game.Config {
+	config := testWorldConfig()
+	config.SpeedMetersPerSecond = 3000
+	return config
+}
+
+func testAOIConfig() game.AOIConfig {
+	return game.AOIConfigFromWorld(testWorldConfig())
+}
+
+func localLatLng(localX, localY float64) (float64, float64) {
+	return testAOIConfig().LocalToLatLng(localX, localY)
+}
+
+func nearbyPlayerLoader() SavedPlayerLoader {
+	return func(userID string) (SavedPlayerLoad, bool) {
+		switch userID {
+		case "alice":
+			lat, lng := localLatLng(0, 0)
+			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
+		case "bob":
+			lat, lng := localLatLng(100, 0)
+			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
+		}
+		return SavedPlayerLoad{}, false
+	}
+}
+
+func distantPlayerLoader() SavedPlayerLoader {
+	return func(userID string) (SavedPlayerLoad, bool) {
+		switch userID {
+		case "alice":
+			lat, lng := localLatLng(0, 0)
+			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
+		case "bob":
+			lat, lng := localLatLng(700, 0)
+			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
+		}
+		return SavedPlayerLoad{}, false
+	}
+}
+
+func hysteresisPlayerLoader() SavedPlayerLoader {
+	return func(userID string) (SavedPlayerLoad, bool) {
+		switch userID {
+		case "alice":
+			lat, lng := localLatLng(0, 0)
+			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
+		case "bob":
+			lat, lng := localLatLng(400, 0)
+			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
+		}
+		return SavedPlayerLoad{}, false
 	}
 }
 

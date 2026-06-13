@@ -287,10 +287,14 @@ func (c AOIConfig) localToCell(localX, localY float64) CellCoord {
 	}
 }
 
-func (c AOIConfig) localToLatLng(localX, localY float64) (lat, lng float64) {
+func (c AOIConfig) LocalToLatLng(localX, localY float64) (lat, lng float64) {
 	lat = c.OriginLat + localY/metersPerDegreeLatitude
 	lng = c.OriginLng + localX/metersPerDegreeLongitude(c.OriginLat)
 	return lat, lng
+}
+
+func (c AOIConfig) localToLatLng(localX, localY float64) (lat, lng float64) {
+	return c.LocalToLatLng(localX, localY)
 }
 
 func (c AOIConfig) enterRadiusSquared() float64 {
