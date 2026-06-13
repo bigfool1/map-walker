@@ -8,7 +8,7 @@
 - Hub fixes: slow clients are fully disconnected (context cancel + socket close); duplicate `playerId` reconnects replace the old connection without removing the new one.
 - Connection reliability: protocol-level heartbeat per client, unified connection lifecycle, frontend auto-reconnect with capped exponential backoff, and Chinese connection status.
 - Browser frontend implemented with Leaflet (CDN), Gaode map tiles, keyboard controls, mobile direction pad, centered auth card, account menu, and appearance editor.
-- Player appearance sync complete: persistent marker color/shape, CSS `divIcon` markers, `PUT /api/appearance`, and realtime `appearance_changed` broadcasts.
+- Player appearance sync complete: persistent marker color/shape, CSS `divIcon` markers, `PUT /api/appearance`, and realtime appearance replication via `replication_update`.
 - Verification command: `go test ./...` and `go vet ./...`.
 - Manual verification target: `http://localhost:8080` (`go run ./cmd/map-walker`).
 
@@ -75,12 +75,13 @@ Design and plan: `docs/superpowers/specs/2026-06-12-player-appearance-sync-desig
 
 ### World state and protocol
 
-- `game.PlayerState` in `world_snapshot` includes `id`, `username`, `lat`,
+- `game.PlayerState` in `self_state` includes `id`, `username`, `lat`,
   `lng`, and nested `appearance`.
-- `players_delta` remains position-only.
-- Saved appearance changes broadcast `appearance_changed` with `playerId` and
-  complete appearance.
-- Online Hub updates apply appearance without touching movement deltas.
+- `visible_entities_snapshot` carries AOI-filtered neighbor state on connect.
+- `replication_update` batches `entered`, `left`, `positions`, `appearances`,
+  and optional `selfPosition` per 100ms tick; empty updates are skipped.
+- Saved appearance changes queue AOI-filtered appearance replication on the next
+  broadcast tick.
 - First connection loads persisted position and appearance; same-account
   replacement retains in-memory position, appearance, and username.
 
@@ -88,8 +89,8 @@ Design and plan: `docs/superpowers/specs/2026-06-12-player-appearance-sync-desig
 
 - Markers use `L.divIcon` with CSS shapes (`circle`, `square`, `diamond`,
   `triangle`) and authoritative color.
-- Snapshot creates or refreshes complete marker state; deltas move markers only;
-  `appearance_changed` updates icon only.
+- `self_state` and `visible_entities_snapshot` create or refresh marker state;
+  `replication_update` applies entered/left/position/appearance deltas.
 - Hover tooltips show `You` for the current user and other players' usernames.
 - Upper-right account trigger opens a menu with appearance editing and logout.
 - Editor supports local preview, shape selection, native color input, save,
@@ -129,9 +130,8 @@ web/                         — Leaflet UI, auth card, account menu, appearance
 
 ## Known Limitations
 
-- No AOI (Area of Interest), spatial indexing, or distance-based filtering —
-  all players are in a single flat world visible to everyone. Room and AOI are
-  the next independent phases.
+- AOI covers authenticated online players in the single World only; no
+  synthetic entities, multi-Hub sharding, or geographic Shard boundaries yet.
 - No password recovery, email verification, or OAuth.
 - Session expiry (30 days) does not proactively disconnect active WebSockets;
   the next reconnect must re-authenticate.
@@ -150,12 +150,48 @@ web/                         — Leaflet UI, auth card, account menu, appearance
 - `game.World` owns spawn positions, movement speed, coordinates, ticks, and
   dirty/removal tracking.
 - Simulation runs at 20 Hz.
-- Incremental broadcasts run at up to 10 Hz and skip empty deltas.
-- New clients receive `world_snapshot`; existing clients receive
-  `players_delta`.
+- Incremental replication runs at up to 10 Hz and skips empty updates.
+- New clients receive `self_state` and `visible_entities_snapshot`; ongoing
+  changes use `replication_update`.
 - Frontend movement follows server output and sends neutral input on release,
   blur, and page hide.
 - Verification: `go test ./...`, `go vet ./...`, and two-window browser testing.
+
+## Online Player AOI Phase (Complete)
+
+Design and plan: `docs/superpowers/specs/2026-06-13-online-player-aoi-design.md`,
+`docs/superpowers/plans/2026-06-13-online-player-aoi.md`.
+
+### Spatial index
+
+- `game.AOIIndex` uses a 600m square Cell grid with Shanghai-local meter
+  coordinates.
+- Enter radius 500m, leave radius 600m (hysteresis).
+- Symmetric visibility relationships; recalculation runs only for players that
+  moved since the previous replication tick.
+
+### Hub replication
+
+- Connect/disconnect updates AOI and queues entered/left for visible neighbors.
+- Init snapshots are AOI-filtered (`visible_entities_snapshot`).
+- One `replication_update` per changed client per 100ms tick.
+- Invisible neighbors receive no position or appearance data.
+- Interval stats log AOI candidate checks, distance checks, relationship
+  changes, and replication payload bytes.
+
+### Scale test
+
+- `internal/realtime/aoi_scale_test.go` runs a deterministic 1,000-client
+  in-memory scenario (sparse grid + dense local cluster) through movement,
+  hysteresis, appearance, disconnect, and connection replacement.
+- This is functional coverage, not a production capacity claim.
+
+### Verification
+
+- Automated: `go test ./internal/game ./internal/realtime`, `go test ./...`,
+  `go vet ./...`.
+- Manual: multi-browser AOI visibility (near/far players, movement entry/exit,
+  appearance, reconnect/replacement).
 
 ## Connection Reliability Phase
 
@@ -167,5 +203,6 @@ web/                         — Leaflet UI, auth card, account menu, appearance
 - The browser keeps one current WebSocket and one retry timer, reconnects
   indefinitely with 1/2/4/8/10 second delays, and ignores events from obsolete
   sockets.
-- Disconnected markers remain visible until the next `world_snapshot`.
+- Disconnected markers remain visible until the next `visible_entities_snapshot`
+  or `replication_update` left event.
 - Verification: `go test ./internal/realtime`, manual stop/start server testing.
