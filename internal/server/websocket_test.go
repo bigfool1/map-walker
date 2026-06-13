@@ -57,16 +57,16 @@ func TestWebSocketAcceptsAuthenticatedSession(t *testing.T) {
 	}
 
 	var message struct {
-		Type    string `json:"type"`
-		Players []struct {
+		Type   string `json:"type"`
+		Player struct {
 			ID string `json:"id"`
-		} `json:"players"`
+		} `json:"player"`
 	}
 	if err := json.Unmarshal(data, &message); err != nil {
-		t.Fatalf("decode snapshot failed: %v", err)
+		t.Fatalf("decode self state failed: %v", err)
 	}
-	if message.Type != "world_snapshot" || len(message.Players) != 1 {
-		t.Fatalf("unexpected snapshot: %s", data)
+	if message.Type != "self_state" || message.Player.ID == "" {
+		t.Fatalf("unexpected self state: %s", data)
 	}
 }
 
@@ -94,17 +94,18 @@ func TestWebSocketIgnoresClientSuppliedPlayerID(t *testing.T) {
 	}
 
 	var message struct {
-		Players []struct {
+		Type   string `json:"type"`
+		Player struct {
 			ID string `json:"id"`
-		} `json:"players"`
+		} `json:"player"`
 	}
 	if err := json.Unmarshal(data, &message); err != nil {
-		t.Fatalf("decode snapshot failed: %v", err)
+		t.Fatalf("decode self state failed: %v", err)
 	}
-	if len(message.Players) != 1 || message.Players[0].ID != session.UserID {
-		t.Fatalf("expected authenticated user id %q, got %+v", session.UserID, message.Players)
+	if message.Type != "self_state" || message.Player.ID != session.UserID {
+		t.Fatalf("expected authenticated user id %q, got %+v", session.UserID, message)
 	}
-	if message.Players[0].ID == "attacker-id" {
+	if message.Player.ID == "attacker-id" {
 		t.Fatal("client-supplied playerId must not be used")
 	}
 }

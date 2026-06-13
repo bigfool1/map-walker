@@ -107,7 +107,7 @@ func TestPutAppearanceStoppedHubReturns503AndKeepsDatabaseValue(t *testing.T) {
 	}
 }
 
-func TestPutAppearanceOnlineUserBroadcastsAppearanceChanged(t *testing.T) {
+func TestPutAppearanceOnlineUserBroadcastsReplicationAppearance(t *testing.T) {
 	server := newRunningTestServer(t)
 	cookie := registerCookie(t, server.URL)
 
@@ -120,7 +120,12 @@ func TestPutAppearanceOnlineUserBroadcastsAppearanceChanged(t *testing.T) {
 	readCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if _, _, err := conn.Read(readCtx); err != nil {
-		t.Fatalf("read snapshot failed: %v", err)
+		t.Fatalf("read self state failed: %v", err)
+	}
+	readCtx, cancel = context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, _, err := conn.Read(readCtx); err != nil {
+		t.Fatalf("read visible entities snapshot failed: %v", err)
 	}
 
 	resp := putJSON(t, server.URL+"/api/appearance", `{"color":"#ff6600","shape":"diamond"}`, cookie)
@@ -129,25 +134,30 @@ func TestPutAppearanceOnlineUserBroadcastsAppearanceChanged(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	readCtx, cancel = context.WithTimeout(context.Background(), time.Second)
+	readCtx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_, data, err := conn.Read(readCtx)
 	if err != nil {
-		t.Fatalf("read appearance changed failed: %v", err)
+		t.Fatalf("read replication update failed: %v", err)
 	}
 
 	var message struct {
-		Type       string             `json:"type"`
-		PlayerID   string             `json:"playerId"`
-		Appearance appearanceResponse `json:"appearance"`
+		Type        string `json:"type"`
+		Appearances []struct {
+			PlayerID   string             `json:"playerId"`
+			Appearance appearanceResponse `json:"appearance"`
+		} `json:"appearances"`
 	}
 	if err := json.Unmarshal(data, &message); err != nil {
-		t.Fatalf("decode appearance changed failed: %v", err)
+		t.Fatalf("decode replication update failed: %v", err)
 	}
-	if message.Type != "appearance_changed" {
-		t.Fatalf("expected appearance_changed, got %q", message.Type)
+	if message.Type != "replication_update" {
+		t.Fatalf("expected replication_update, got %q", message.Type)
 	}
-	if message.Appearance.Color != "#ff6600" || message.Appearance.Shape != "diamond" {
+	if len(message.Appearances) != 1 {
+		t.Fatalf("expected one appearance update, got %+v", message)
+	}
+	if message.Appearances[0].Appearance.Color != "#ff6600" || message.Appearances[0].Appearance.Shape != "diamond" {
 		t.Fatalf("unexpected appearance message: %+v", message)
 	}
 }

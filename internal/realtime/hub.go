@@ -52,6 +52,8 @@ type Hub struct {
 	clients            map[string]ClientSender
 	persistDirty       map[string]struct{}
 	persistSeq         map[string]uint64
+	pendingEntered     map[string]game.PlayerState
+	pendingAppearances map[string]game.Appearance
 	disconnectUser     chan disconnectRequest
 	simulationTick    <-chan time.Time
 	broadcastTick     <-chan time.Time
@@ -116,10 +118,12 @@ func newHub(
 		appearanceUpdates: make(chan appearanceUpdateRequest),
 		stop:              make(chan struct{}),
 		done:              make(chan struct{}),
-		clients:           map[string]ClientSender{},
-		persistDirty:      map[string]struct{}{},
-		persistSeq:        map[string]uint64{},
-		disconnectUser:    make(chan disconnectRequest),
+		clients:            map[string]ClientSender{},
+		persistDirty:       map[string]struct{}{},
+		persistSeq:         map[string]uint64{},
+		pendingEntered:     map[string]game.PlayerState{},
+		pendingAppearances: map[string]game.Appearance{},
+		disconnectUser:     make(chan disconnectRequest),
 		simulationTick:    simulationTick,
 		broadcastTick:     broadcastTick,
 		persistenceTick:   persistenceTick,
@@ -155,7 +159,7 @@ func (h *Hub) Run() {
 			}
 			h.stats.simulationTicks++
 		case <-h.broadcastTick:
-			h.broadcastDelta()
+			h.broadcastReplication()
 		case <-h.persistenceTick:
 			h.persistDirtyPositions()
 		case <-h.statsTick:
@@ -250,10 +254,15 @@ func (h *Hub) registerClient(client ClientSender) {
 		h.world.ResetInput(client.ID())
 	} else if !h.world.HasPlayer(client.ID()) {
 		h.addPlayer(client.ID(), client.Username())
+		if len(h.clients) > 0 {
+			if state, ok := h.world.PlayerState(client.ID()); ok {
+				h.pendingEntered[client.ID()] = state
+			}
+		}
 	}
 
 	h.clients[client.ID()] = client
-	h.sendSnapshot(client)
+	h.sendInitialization(client)
 }
 
 func (h *Hub) addPlayer(userID, username string) {
@@ -287,21 +296,7 @@ func (h *Hub) applyAppearanceUpdate(req appearanceUpdateRequest) {
 		return
 	}
 
-	h.broadcastAppearanceChanged(req.userID, req.appearance)
-}
-
-func (h *Hub) broadcastAppearanceChanged(userID string, appearance game.Appearance) {
-	data, err := EncodeAppearanceChanged(userID, appearance)
-	if err != nil {
-		log.Printf("encode appearance changed failed: %v", err)
-		return
-	}
-
-	for _, client := range h.clients {
-		if ok := client.Send(data); !ok {
-			h.removeClient(client)
-		}
-	}
+	h.pendingAppearances[req.userID] = req.appearance
 }
 
 func (h *Hub) removeClient(client ClientSender) {
@@ -315,6 +310,8 @@ func (h *Hub) removeClient(client ClientSender) {
 	h.world.RemovePlayer(client.ID())
 	delete(h.persistDirty, client.ID())
 	delete(h.persistSeq, client.ID())
+	delete(h.pendingEntered, client.ID())
+	delete(h.pendingAppearances, client.ID())
 	client.CloseSend()
 }
 
@@ -363,41 +360,129 @@ func (h *Hub) submitFinalPosition(userID string) {
 	}
 }
 
-func (h *Hub) sendSnapshot(client ClientSender) {
-	data, err := EncodeWorldSnapshot(h.world.Tick(), h.world.PlayerStates(h.world.PlayerIDs()))
-	if err != nil {
-		log.Printf("encode world snapshot failed: %v", err)
+func (h *Hub) sendInitialization(client ClientSender) {
+	tick := h.world.Tick()
+	self, ok := h.world.PlayerState(client.ID())
+	if !ok {
 		h.removeClient(client)
 		return
 	}
-	if ok := client.Send(data); !ok {
+
+	selfData, err := EncodeSelfState(tick, self)
+	if err != nil {
+		log.Printf("encode self state failed: %v", err)
+		h.removeClient(client)
+		return
+	}
+	if ok := client.Send(selfData); !ok {
+		h.removeClient(client)
+		return
+	}
+
+	visibleIDs := make([]string, 0, len(h.world.PlayerIDs()))
+	for _, playerID := range h.world.PlayerIDs() {
+		if playerID != client.ID() {
+			visibleIDs = append(visibleIDs, playerID)
+		}
+	}
+	visibleData, err := EncodeVisibleEntitiesSnapshot(tick, h.world.PlayerStates(visibleIDs))
+	if err != nil {
+		log.Printf("encode visible entities snapshot failed: %v", err)
+		h.removeClient(client)
+		return
+	}
+	if ok := client.Send(visibleData); !ok {
 		h.removeClient(client)
 	}
 }
 
-func (h *Hub) broadcastDelta() {
+func (h *Hub) broadcastReplication() {
 	movedIDs := h.world.TakeMovedPlayerIDs()
 	removedIDs := h.world.TakeRemovedPlayerIDs()
-	if len(movedIDs) == 0 && len(removedIDs) == 0 {
+	pendingEntered := h.takePendingEntered()
+	pendingAppearances := h.takePendingAppearances()
+
+	if len(movedIDs) == 0 && len(removedIDs) == 0 && len(pendingEntered) == 0 && len(pendingAppearances) == 0 {
 		return
 	}
 
-	players := h.world.PlayerStates(movedIDs)
-	data, err := EncodePlayersDelta(h.world.Tick(), players, removedIDs)
-	if err != nil {
-		log.Printf("encode players delta failed: %v", err)
-		return
-	}
-
-	h.stats.deltaBroadcasts++
-	h.stats.changedPlayers += uint64(len(players))
-	h.stats.deltaBytes += uint64(len(data))
+	tick := h.world.Tick()
+	movedSet := stringSet(movedIDs)
 
 	for _, client := range h.clients {
-		if ok := client.Send(data); !ok {
+		changes := ReplicationChanges{
+			LeftPlayerIDs: removedIDs,
+		}
+
+		if setContains(movedSet, client.ID()) {
+			if position, ok := h.world.PlayerPosition(client.ID()); ok {
+				changes.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
+			}
+		}
+
+		for _, playerID := range movedIDs {
+			if playerID == client.ID() {
+				continue
+			}
+			if position, ok := h.world.PlayerPosition(playerID); ok {
+				changes.Positions = append(changes.Positions, position)
+			}
+		}
+
+		for _, state := range pendingEntered {
+			if state.ID != client.ID() {
+				changes.Entered = append(changes.Entered, state)
+			}
+		}
+
+		for playerID, appearance := range pendingAppearances {
+			changes.Appearances = append(changes.Appearances, PlayerAppearanceUpdate{
+				PlayerID:   playerID,
+				Appearance: appearance,
+			})
+		}
+
+		data, ok, err := TryEncodeReplicationUpdate(tick, client.ID(), changes)
+		if err != nil {
+			log.Printf("encode replication update failed: %v", err)
+			continue
+		}
+		if !ok {
+			continue
+		}
+
+		h.stats.deltaBroadcasts++
+		h.stats.changedPlayers++
+		h.stats.deltaBytes += uint64(len(data))
+
+		if sendOK := client.Send(data); !sendOK {
 			h.removeClient(client)
 		}
 	}
+}
+
+func (h *Hub) takePendingEntered() []game.PlayerState {
+	if len(h.pendingEntered) == 0 {
+		return nil
+	}
+	states := make([]game.PlayerState, 0, len(h.pendingEntered))
+	for _, state := range h.pendingEntered {
+		states = append(states, state)
+	}
+	clear(h.pendingEntered)
+	return states
+}
+
+func (h *Hub) takePendingAppearances() map[string]game.Appearance {
+	if len(h.pendingAppearances) == 0 {
+		return nil
+	}
+	appearances := make(map[string]game.Appearance, len(h.pendingAppearances))
+	for playerID, appearance := range h.pendingAppearances {
+		appearances[playerID] = appearance
+	}
+	clear(h.pendingAppearances)
+	return appearances
 }
 
 func (h *Hub) logStats() {

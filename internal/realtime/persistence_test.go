@@ -80,19 +80,22 @@ func TestHubPersistenceBatchIncludesOnlyMovedPlayers(t *testing.T) {
 	alice := NewTestClient("alice", 8)
 	bob := NewTestClient("bob", 8)
 	hub.Register(alice)
-	mustReceiveSnapshot(t, alice)
+	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
-	mustReceiveSnapshot(t, bob)
+	mustReceiveInitialization(t, bob)
 	broadcasts <- time.Now()
-	assertNoMessage(t, alice)
+	mustReceiveReplicationUpdate(t, alice)
 	assertNoMessage(t, bob)
 
 	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
 	simulations <- time.Now()
 	assertNoMessage(t, alice)
 	broadcasts <- time.Now()
-	moved := mustReceiveDelta(t, alice)
-	mustReceiveDelta(t, bob)
+	moved := mustReceiveReplicationUpdate(t, alice)
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	if len(bobUpdate.Positions) != 1 || bobUpdate.Positions[0].ID != "alice" {
+		t.Fatalf("expected bob to receive alice position, got %+v", bobUpdate)
+	}
 
 	persistence <- time.Now()
 	waitForPersistBatches(t, persister, 1)
@@ -104,8 +107,8 @@ func TestHubPersistenceBatchIncludesOnlyMovedPlayers(t *testing.T) {
 	if len(batches[0]) != 1 || batches[0][0].UserID != "alice" {
 		t.Fatalf("expected only alice in batch, got %+v", batches[0])
 	}
-	if batches[0][0].Lng != moved.Players[0].Lng {
-		t.Fatalf("expected moved alice position, got %+v", batches[0][0])
+	if moved.SelfPosition == nil || batches[0][0].Lng != moved.SelfPosition.Lng {
+		t.Fatalf("expected moved alice position, got batch=%+v replication=%+v", batches[0][0], moved.SelfPosition)
 	}
 }
 
@@ -117,7 +120,7 @@ func TestHubPersistenceSkipsUnchangedPlayers(t *testing.T) {
 
 	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
-	mustReceiveSnapshot(t, alice)
+	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
@@ -136,7 +139,7 @@ func TestHubFinalSaveOnGenuineDisconnect(t *testing.T) {
 
 	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
-	mustReceiveSnapshot(t, alice)
+	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
@@ -144,7 +147,7 @@ func TestHubFinalSaveOnGenuineDisconnect(t *testing.T) {
 	simulations <- time.Now()
 	assertNoMessage(t, alice)
 	broadcasts <- time.Now()
-	moved := mustReceiveDelta(t, alice)
+	moved := mustReceiveReplicationUpdate(t, alice)
 
 	hub.Unregister(alice)
 	waitForClientClose(t, alice)
@@ -156,7 +159,7 @@ func TestHubFinalSaveOnGenuineDisconnect(t *testing.T) {
 	if len(batches[0]) != 1 || batches[0][0].UserID != "alice" {
 		t.Fatalf("unexpected final save: %+v", batches[0])
 	}
-	if batches[0][0].Lng != moved.Players[0].Lng {
+	if moved.SelfPosition == nil || batches[0][0].Lng != moved.SelfPosition.Lng {
 		t.Fatalf("expected moved final position, got %+v", batches[0][0])
 	}
 }
@@ -170,7 +173,7 @@ func TestHubReplacementDoesNotFinalSave(t *testing.T) {
 	old := NewTestClient("alice", 8)
 	replacement := NewTestClient("alice", 8)
 	hub.Register(old)
-	mustReceiveSnapshot(t, old)
+	mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
 	assertNoMessage(t, old)
 
@@ -178,10 +181,10 @@ func TestHubReplacementDoesNotFinalSave(t *testing.T) {
 	simulations <- time.Now()
 	assertNoMessage(t, old)
 	broadcasts <- time.Now()
-	mustReceiveDelta(t, old)
+	mustReceiveReplicationUpdate(t, old)
 
 	hub.Register(replacement)
-	mustReceiveSnapshot(t, replacement)
+	mustReceiveInitialization(t, replacement)
 	hub.Unregister(old)
 
 	if batches := persister.Batches(); len(batches) != 0 {
@@ -197,7 +200,7 @@ func TestHubSimulationContinuesWhilePersistenceBlocks(t *testing.T) {
 
 	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
-	mustReceiveSnapshot(t, alice)
+	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
@@ -214,9 +217,9 @@ func TestHubSimulationContinuesWhilePersistenceBlocks(t *testing.T) {
 
 	simulations <- time.Now()
 	broadcasts <- time.Now()
-	delta := mustReceiveDelta(t, alice)
-	if len(delta.Players) != 1 {
-		t.Fatalf("expected simulation to continue during blocked persistence, got %+v", delta)
+	update := mustReceiveReplicationUpdate(t, alice)
+	if update.SelfPosition == nil {
+		t.Fatalf("expected simulation to continue during blocked persistence, got %+v", update)
 	}
 
 	close(persister.release)
@@ -230,7 +233,7 @@ func TestHubPersistenceUsesIncreasingSequence(t *testing.T) {
 
 	alice := NewTestClient("alice", 8)
 	hub.Register(alice)
-	mustReceiveSnapshot(t, alice)
+	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
