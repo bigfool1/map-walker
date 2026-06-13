@@ -36,7 +36,7 @@ silently included.
 
 ### Task 1: Freeze Deterministic AOI Workloads
 
-- [ ] Deliver reusable scenario definitions, player placement, active-player
+- [x] Deliver reusable scenario definitions, player placement, active-player
   selection, and movement schedules.
 
 **Task boundary:**
