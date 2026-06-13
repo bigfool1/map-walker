@@ -39,6 +39,13 @@ type RelationshipChanges struct {
 	Left    []string
 }
 
+type AOIStats struct {
+	CandidatePairs         uint64
+	DistanceChecks         uint64
+	RelationshipsEntered   uint64
+	RelationshipsLeft      uint64
+}
+
 type aoiPlayer struct {
 	lat, lng       float64
 	localX, localY float64
@@ -50,6 +57,7 @@ type AOIIndex struct {
 	players map[string]*aoiPlayer
 	cells   map[CellCoord]map[string]struct{}
 	visible map[string]map[string]struct{}
+	stats   AOIStats
 }
 
 func NewAOIIndex(config AOIConfig) *AOIIndex {
@@ -85,6 +93,12 @@ func (a *AOIIndex) LocalPosition(playerID string) (localX, localY float64, ok bo
 func (a *AOIIndex) VisibleNeighbors(playerID string) []string {
 	neighbors := setKeys(a.visible[playerID])
 	return neighbors
+}
+
+func (a *AOIIndex) TakeStats() AOIStats {
+	stats := a.stats
+	a.stats = AOIStats{}
+	return stats
 }
 
 func (a *AOIIndex) Insert(playerID string, lat, lng float64) RelationshipChanges {
@@ -168,10 +182,13 @@ func (a *AOIIndex) recalculateRelationships(playerID string) RelationshipChanges
 		if candidateID == playerID || a.isVisible(playerID, candidateID) {
 			continue
 		}
+		a.stats.CandidatePairs++
 		candidate := a.players[candidateID]
+		a.stats.DistanceChecks++
 		if a.withinEnterRadius(self, candidate) {
 			if a.addRelationship(playerID, candidateID) {
 				entered = append(entered, candidateID)
+				a.stats.RelationshipsEntered++
 			}
 		}
 	}
@@ -181,9 +198,11 @@ func (a *AOIIndex) recalculateRelationships(playerID string) RelationshipChanges
 		if neighbor == nil {
 			continue
 		}
+		a.stats.DistanceChecks++
 		if a.beyondLeaveRadius(self, neighbor) {
 			if a.removeRelationship(playerID, neighborID) {
 				left = append(left, neighborID)
+				a.stats.RelationshipsLeft++
 			}
 		}
 	}

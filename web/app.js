@@ -348,12 +348,12 @@ function connect() {
       return;
     }
     const message = JSON.parse(event.data);
-    if (message.type === "world_snapshot") {
-      renderSnapshot(message.players);
-    } else if (message.type === "players_delta") {
-      renderDelta(message.players, message.removedPlayerIds);
-    } else if (message.type === "appearance_changed") {
-      renderAppearanceChanged(message.playerId, message.appearance);
+    if (message.type === "self_state") {
+      renderSelfState(message.player);
+    } else if (message.type === "visible_entities_snapshot") {
+      renderVisibleEntitiesSnapshot(message.players);
+    } else if (message.type === "replication_update") {
+      applyReplicationUpdate(message);
     }
   });
 
@@ -463,30 +463,76 @@ function sendInput() {
   );
 }
 
-function renderSnapshot(players) {
-  const liveIds = new Set(players.map((player) => player.id));
+function renderSelfState(player) {
+  if (!player || player.id !== currentUserId) {
+    return;
+  }
+  currentUsername = player.username || currentUsername;
+  upsertPlayerFromSnapshot(player);
+  if (!editorOpen) {
+    setAuthoritativeAppearance(player.appearance || DEFAULT_APPEARANCE);
+  }
+}
+
+function renderVisibleEntitiesSnapshot(players) {
+  const visibleIds = new Set((players || []).map((player) => player.id));
   for (const [id, entry] of markers.entries()) {
-    if (!liveIds.has(id)) {
+    if (id !== currentUserId && !visibleIds.has(id)) {
       entry.marker.remove();
       markers.delete(id);
     }
   }
-  for (const player of players) {
+  for (const player of players || []) {
+    if (player.id === currentUserId) {
+      continue;
+    }
     upsertPlayerFromSnapshot(player);
   }
 }
 
-function renderDelta(players, removedPlayerIds) {
-  for (const playerIdToRemove of removedPlayerIds) {
-    removePlayerMarker(playerIdToRemove);
-  }
-  for (const player of players) {
-    if (markers.has(player.id)) {
-      updatePlayerPosition(player);
-    } else {
-      upsertPlayerFromSnapshot(player);
+function applyReplicationUpdate(message) {
+  const leftIds = new Set(message.leftPlayerIds || []);
+
+  for (const playerId of leftIds) {
+    if (playerId !== currentUserId) {
+      removePlayerMarker(playerId);
     }
   }
+
+  if (message.selfPosition) {
+    updateSelfPosition(message.selfPosition);
+  }
+
+  for (const player of message.entered || []) {
+    if (player.id === currentUserId || leftIds.has(player.id)) {
+      continue;
+    }
+    upsertPlayerFromSnapshot(player);
+  }
+
+  for (const position of message.positions || []) {
+    if (position.id === currentUserId || leftIds.has(position.id)) {
+      continue;
+    }
+    updatePlayerPosition(position);
+  }
+
+  for (const update of message.appearances || []) {
+    if (leftIds.has(update.playerId)) {
+      continue;
+    }
+    renderAppearanceChanged(update.playerId, update.appearance);
+  }
+}
+
+function updateSelfPosition(position) {
+  const entry = markers.get(currentUserId);
+  if (!entry) {
+    return;
+  }
+  const latLng = [position.lat, position.lng];
+  entry.marker.setLatLng(latLng);
+  map.panTo(latLng, { animate: true });
 }
 
 function renderAppearanceChanged(playerId, appearance) {
@@ -505,6 +551,7 @@ function renderAppearanceChanged(playerId, appearance) {
 }
 
 function upsertPlayerFromSnapshot(player) {
+  const appearance = player.appearance || DEFAULT_APPEARANCE;
   const latLng = [player.lat, player.lng];
   const label = markerLabel(player);
   const entry = markers.get(player.id);
@@ -514,21 +561,21 @@ function upsertPlayerFromSnapshot(player) {
       entry.username = player.username;
       entry.marker.setTooltipContent(label);
     }
-    if (!sameAppearance(entry.appearance, player.appearance)) {
-      entry.appearance = { color: player.appearance.color, shape: player.appearance.shape };
-      entry.marker.setIcon(playerMarkerIcon(player.appearance));
+    if (!sameAppearance(entry.appearance, appearance)) {
+      entry.appearance = { color: appearance.color, shape: appearance.shape };
+      entry.marker.setIcon(playerMarkerIcon(appearance));
     }
     if (player.id === currentUserId && !editorOpen) {
-      setAuthoritativeAppearance(player.appearance);
+      setAuthoritativeAppearance(appearance);
     }
   } else {
-    const marker = L.marker(latLng, { icon: playerMarkerIcon(player.appearance) })
+    const marker = L.marker(latLng, { icon: playerMarkerIcon(appearance) })
       .addTo(map)
       .bindTooltip(label);
     markers.set(player.id, {
       marker,
       username: player.username,
-      appearance: { color: player.appearance.color, shape: player.appearance.shape },
+      appearance: { color: appearance.color, shape: appearance.shape },
     });
   }
 

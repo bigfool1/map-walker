@@ -66,11 +66,16 @@ type Hub struct {
 }
 
 type intervalStats struct {
-	acceptedInputs  uint64
-	simulationTicks uint64
-	deltaBroadcasts uint64
-	changedPlayers  uint64
-	deltaBytes      uint64
+	acceptedInputs          uint64
+	simulationTicks         uint64
+	movedPlayers            uint64
+	aoiCandidatePairs       uint64
+	aoiDistanceChecks       uint64
+	aoiRelationshipsEntered uint64
+	aoiRelationshipsLeft    uint64
+	replicationMessages     uint64
+	replicationRecipients   uint64
+	replicationBytes        uint64
 }
 
 func NewHub() *Hub {
@@ -457,6 +462,7 @@ func (h *Hub) broadcastReplication() {
 
 	visibilityBefore := h.snapshotVisibility()
 	h.applyMovementAOIChanges(movedIDs)
+	h.stats.movedPlayers += uint64(len(movedIDs))
 
 	pendingEntered := h.takePendingEntered()
 	pendingLeft := h.takePendingLeft()
@@ -517,9 +523,9 @@ func (h *Hub) broadcastReplication() {
 			continue
 		}
 
-		h.stats.deltaBroadcasts++
-		h.stats.changedPlayers++
-		h.stats.deltaBytes += uint64(len(data))
+		h.stats.replicationMessages++
+		h.stats.replicationRecipients++
+		h.stats.replicationBytes += uint64(len(data))
 
 		if sendOK := client.Send(data); !sendOK {
 			h.removeClient(client)
@@ -592,8 +598,10 @@ func (h *Hub) takePendingEntered() []game.PlayerState {
 		return nil
 	}
 	states := make([]game.PlayerState, 0, len(h.pendingEntered))
-	for _, state := range h.pendingEntered {
-		states = append(states, state)
+	for playerID := range h.pendingEntered {
+		if state, ok := h.world.PlayerState(playerID); ok {
+			states = append(states, state)
+		}
 	}
 	clear(h.pendingEntered)
 	return states
@@ -612,14 +620,25 @@ func (h *Hub) takePendingAppearances() map[string]game.Appearance {
 }
 
 func (h *Hub) logStats() {
+	aoiStats := h.aoi.TakeStats()
+	h.stats.aoiCandidatePairs += aoiStats.CandidatePairs
+	h.stats.aoiDistanceChecks += aoiStats.DistanceChecks
+	h.stats.aoiRelationshipsEntered += aoiStats.RelationshipsEntered
+	h.stats.aoiRelationshipsLeft += aoiStats.RelationshipsLeft
+
 	log.Printf(
-		"realtime stats clients=%d inputs=%d simulation_ticks=%d delta_broadcasts=%d changed_players=%d delta_bytes=%d",
+		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d",
 		len(h.clients),
 		h.stats.acceptedInputs,
 		h.stats.simulationTicks,
-		h.stats.deltaBroadcasts,
-		h.stats.changedPlayers,
-		h.stats.deltaBytes,
+		h.stats.movedPlayers,
+		h.stats.aoiCandidatePairs,
+		h.stats.aoiDistanceChecks,
+		h.stats.aoiRelationshipsEntered,
+		h.stats.aoiRelationshipsLeft,
+		h.stats.replicationMessages,
+		h.stats.replicationRecipients,
+		h.stats.replicationBytes,
 	)
 	h.stats = intervalStats{}
 }

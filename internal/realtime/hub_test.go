@@ -1,7 +1,10 @@
 package realtime
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -347,6 +350,170 @@ func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 	assertNoMessage(t, bob)
+}
+
+func TestHubUpdateAppearanceInvisibleNeighborSuppressed(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+		"carol": {900, 0},
+	})
+	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	carol := NewTestClient("carol", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	hub.Register(carol)
+	mustReceiveInitialization(t, carol)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+	assertNoMessage(t, carol)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	if !hub.UpdateAppearance("alice", updated) {
+		t.Fatal("appearance update failed")
+	}
+
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	mustReceiveReplicationUpdate(t, bob)
+	assertNoMessage(t, carol)
+}
+
+func TestHubUpdateAppearanceCollapsesToFinalValue(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	first := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	second := game.Appearance{Color: "#00aa66", Shape: game.ShapeTriangle}
+	if !hub.UpdateAppearance("alice", first) {
+		t.Fatal("first appearance update failed")
+	}
+	if !hub.UpdateAppearance("alice", second) {
+		t.Fatal("second appearance update failed")
+	}
+
+	broadcasts <- time.Now()
+	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	if len(aliceUpdate.Appearances) != 1 || aliceUpdate.Appearances[0].Appearance != second {
+		t.Fatalf("expected final appearance for alice, got %+v", aliceUpdate)
+	}
+	if len(bobUpdate.Appearances) != 1 || bobUpdate.Appearances[0].Appearance != second {
+		t.Fatalf("expected final appearance for bob, got %+v", bobUpdate)
+	}
+}
+
+func TestHubUpdateAppearanceLeftPrecedence(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+	})
+	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	if !hub.UpdateAppearance("alice", updated) {
+		t.Fatal("appearance update failed")
+	}
+	hub.Unregister(alice)
+
+	broadcasts <- time.Now()
+	update := mustReceiveReplicationUpdate(t, bob)
+	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != "alice" {
+		t.Fatalf("expected alice left, got %+v", update)
+	}
+	if len(update.Appearances) != 0 {
+		t.Fatalf("left should suppress appearance, got %+v", update)
+	}
+}
+
+func TestHubUpdateAppearanceEnteredIncludesFinalAppearance(t *testing.T) {
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+	})
+	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	if !hub.UpdateAppearance("bob", updated) {
+		t.Fatal("appearance update failed")
+	}
+
+	broadcasts <- time.Now()
+	joined := mustReceiveReplicationUpdate(t, alice)
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+		t.Fatalf("expected bob entered, got %+v", joined)
+	}
+	if joined.Entered[0].Appearance != updated {
+		t.Fatalf("entered should carry final appearance, got %+v", joined.Entered[0].Appearance)
+	}
+	if len(joined.Appearances) != 0 {
+		t.Fatalf("entered should exclude duplicate appearance, got %+v", joined)
+	}
+}
+
+func TestHubUpdateAppearanceReturnsBeforeReplicationTick(t *testing.T) {
+	hub, _, broadcasts, _ := newTestHub()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+
+	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
+	if !hub.UpdateAppearance("alice", updated) {
+		t.Fatal("appearance update failed")
+	}
+	assertNoMessage(t, alice)
+
+	broadcasts <- time.Now()
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.Appearances) != 1 || update.Appearances[0].Appearance != updated {
+		t.Fatalf("unexpected appearance replication: %+v", update)
+	}
 }
 
 func TestHubUpdateAppearanceUnchangedDoesNotBroadcast(t *testing.T) {
@@ -924,6 +1091,62 @@ func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
 	}
 }
 
+func TestHubLogsAOIStats(t *testing.T) {
+	var logOutput bytes.Buffer
+	originalWriter := log.Writer()
+	log.SetOutput(&logOutput)
+	t.Cleanup(func() { log.SetOutput(originalWriter) })
+
+	statsTick := make(chan time.Time, 8)
+	loader := fixedPositionsLoader(map[string][2]float64{
+		"alice": {0, 0},
+		"bob":   {100, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(fastTestWorldConfig(), loader, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient("alice", 8)
+	bob := NewTestClient("bob", 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	assertNoMessage(t, bob)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(logOutput.String(), "replication_messages=3") {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	output := logOutput.String()
+	for _, want := range []string{
+		"moved_players=1",
+		"aoi_candidates=1",
+		"aoi_distance_checks=3",
+		"aoi_entered=1",
+		"replication_messages=3",
+		"replication_recipients=3",
+		"replication_bytes=354",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected stats log to contain %q, got:\n%s", want, output)
+		}
+	}
+}
+
 func TestHubDisconnectUserUnknownIDIsNoop(t *testing.T) {
 	hub, _, _, _ := newTestHub()
 	go hub.Run()
@@ -958,11 +1181,15 @@ func newTestHubWithLoader(loader SavedPlayerLoader, persister PositionPersister)
 }
 
 func newTestHubWithConfig(config game.Config, loader SavedPlayerLoader, persister PositionPersister) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
+	return newTestHubWithConfigAndStats(config, loader, persister, nil)
+}
+
+func newTestHubWithConfigAndStats(config game.Config, loader SavedPlayerLoader, persister PositionPersister, statsTick chan time.Time) (*Hub, chan time.Time, chan time.Time, chan time.Time) {
 	simulations := make(chan time.Time, 8)
 	broadcasts := make(chan time.Time, 8)
 	persistence := make(chan time.Time, 8)
 	world := game.NewWorld(config)
-	hub := newHub(world, loader, persister, simulations, broadcasts, persistence, nil, func() {})
+	hub := newHub(world, loader, persister, simulations, broadcasts, persistence, statsTick, func() {})
 	return hub, simulations, broadcasts, persistence
 }
 
