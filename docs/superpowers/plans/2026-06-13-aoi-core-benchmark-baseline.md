@@ -121,7 +121,7 @@ silently included.
 
 ### Task 2: Define Results, Metrics, And Environment Metadata
 
-- [ ] Deliver stable result models and cross-platform measurement primitives.
+- [x] Deliver stable result models and cross-platform measurement primitives.
 
 **Task boundary:**
 

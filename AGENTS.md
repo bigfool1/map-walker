@@ -89,3 +89,46 @@ go run ./cmd/map-walker -db-driver mysql -db-dsn 'user:pass@tcp(localhost:3306)/
 - `server/` 测试用 `httptest.NewServer`，需要 SQLite 临时文件
 - `storage/` 测试需要 SQLite 临时文件
 - scale test（`aoi_scale_test.go`）耗时较长，放在单独的 `_test.go` 文件中
+
+### 按任务类型的 Agent 规则
+
+不同任务类型有不同的最佳工作方式，分配 agent 时按类型选择策略。
+
+#### Debug / 排查故障
+
+- 先用 Explore agent 读代码定位，不要上来就改
+- 涉及 Hub tick 测试失败时，优先检查并发时序（select 随机性、channel 语义、异步调用）——见 [docs/concurrency-debugging.md](docs/concurrency-debugging.md)
+- 复现 → 最小化 → 修复 → 回归测试，不要跳过复现步骤
+- 错误归因时先排除时序问题，不要先怀疑业务逻辑
+
+#### 新 Feature 开发
+
+- 先出 spec/plan 文档（`docs/superpowers/specs/` 和 `docs/superpowers/plans/`）
+- 按依赖关系自底向上实现：`game/` → `storage/` → `realtime/` → `server/` → `web/`
+- 每一层改完跑该层的测试，确认绿了再进下一层
+- 协议变更必须先定 `messages.go`，再同步改服务端和前端
+- 不要在同一轮同时改协议定义和消费方——协议先提交，消费方后提交
+
+#### 性能优化
+
+- 必须先有 benchmark 数字，优化后对比，禁止凭直觉优化
+- AOI benchmark 场景在 `internal/benchmark/aoiworkload/`
+
+#### Bug Fix
+
+- Diff 最小化——只改必要的行，不顺手重构无关代码
+- 每个 fix 至少跟一个回归测试
+- 如果 bug 涉及 channel/select/goroutine 时序，补充到 `docs/concurrency-debugging.md`
+
+#### 重构
+
+- 先确保测试全绿，再开始重构
+- 小步提交，每步可独立 revert
+- 重构方向参考 AGENTS.md 编码约定：减少抽象、删除死代码、合并重复逻辑
+- Hub struct 字段数 > 30 时考虑按职责打包成子 struct
+
+#### 文档
+
+- 完成一个 phase 后更新 `docs/map-walker-handoff.md`
+- README 的 WebSocket 协议节、HTTP API 表必须与实际代码一致
+- AGENTS.md 的目录结构和消息类型列表随代码变更同步更新
