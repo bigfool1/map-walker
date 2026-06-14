@@ -40,6 +40,11 @@ Thumbs.db
 # Local debug / scratch
 tmp/
 *.log
+*.pprof
+docs/benchmarks/profiles/
+docs/benchmarks/matrix-run.log
+docs/benchmarks/matrix-progress.json
+docs/benchmarks/aoi-core-baseline-matrix-stdout.json
 .superpowers/
 data/
 

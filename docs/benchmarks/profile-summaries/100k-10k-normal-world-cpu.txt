@@ -1,0 +1,29 @@
+=== 100k-10k-normal-world CPU top ===
+File: aoi-bench
+Type: cpu
+Time: 2026-06-14 11:07:43 CST
+Duration: 112.61s, Total samples = 123.38s (109.56%)
+Showing nodes accounting for 98.69s, 79.99% of 123.38s total
+Dropped 298 nodes (cum <= 0.62s)
+Showing top 20 nodes out of 116
+      flat  flat%   sum%        cum   cum%
+    30.89s 25.04% 25.04%     30.89s 25.04%  runtime.memclrNoHeapPointers
+    13.49s 10.93% 35.97%     17.65s 14.31%  runtime.mapaccess2_faststr
+    11.18s  9.06% 45.03%     39.23s 31.80%  runtime.mapassign_faststr
+     8.73s  7.08% 52.11%      8.76s  7.10%  runtime.(*mspan).typePointersOfUnchecked
+     4.72s  3.83% 55.93%      4.72s  3.83%  internal/runtime/maps.(*ctrlGroup).get (inline)
+     3.86s  3.13% 59.06%     16.54s 13.41%  runtime.scanObject
+     3.12s  2.53% 61.59%      4.23s  3.43%  slices.partitionOrdered[go.shape.string]
+     3.03s  2.46% 64.05%      8.13s  6.59%  internal/runtime/maps.(*Iter).Next
+     2.15s  1.74% 65.79%      3.69s  2.99%  runtime.mapaccess1_faststr
+     2.06s  1.67% 67.46%      2.06s  1.67%  runtime.madvise
+     2.05s  1.66% 69.12%      3.07s  2.49%  runtime.tryDeferToSpanScan
+     1.88s  1.52% 70.64%      1.88s  1.52%  runtime.(*fixalloc).alloc
+     1.75s  1.42% 72.06%      1.75s  1.42%  runtime.pthread_cond_signal
+     1.60s  1.30% 73.36%      1.60s  1.30%  internal/runtime/maps.probeSeq.next (inline)
+     1.56s  1.26% 74.62%      1.56s  1.26%  cmpbody
+     1.53s  1.24% 75.86%      1.53s  1.24%  internal/runtime/maps.(*Map).Used (inline)
+     1.45s  1.18% 77.04%      1.98s  1.60%  slices.insertionSortOrdered[go.shape.string]
+     1.29s  1.05% 78.08%      1.29s  1.05%  map-walker/internal/game.(*AOIIndex).distanceSquared
+     1.18s  0.96% 79.04%     14.33s 11.61%  map-walker/internal/benchmark/aoiworkload.(*ScheduleExpander).ExpandUpdate
+     1.17s  0.95% 79.99%      1.17s  0.95%  aeshashbody

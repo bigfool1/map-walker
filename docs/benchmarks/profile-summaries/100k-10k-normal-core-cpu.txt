@@ -1,0 +1,29 @@
+=== 100k-10k-normal-core CPU top ===
+File: aoi-bench
+Type: cpu
+Time: 2026-06-14 11:05:51 CST
+Duration: 107.67s, Total samples = 118.97s (110.49%)
+Showing nodes accounting for 91.38s, 76.81% of 118.97s total
+Dropped 299 nodes (cum <= 0.59s)
+Showing top 20 nodes out of 126
+      flat  flat%   sum%        cum   cum%
+    28.84s 24.24% 24.24%     28.84s 24.24%  runtime.memclrNoHeapPointers
+    12.50s 10.51% 34.75%     16.56s 13.92%  runtime.mapaccess2_faststr
+     7.92s  6.66% 41.41%      7.97s  6.70%  runtime.(*mspan).typePointersOfUnchecked
+     5.66s  4.76% 46.16%     32.54s 27.35%  runtime.mapassign_faststr
+     4.31s  3.62% 49.79%     17.10s 14.37%  runtime.scanObject
+     3.60s  3.03% 52.81%      3.60s  3.03%  internal/runtime/maps.(*ctrlGroup).get (inline)
+     3.28s  2.76% 55.57%      7.41s  6.23%  internal/runtime/maps.(*Iter).Next
+     3.13s  2.63% 58.20%      3.13s  2.63%  runtime.madvise
+     2.94s  2.47% 60.67%      4.43s  3.72%  slices.partitionOrdered[go.shape.string]
+     2.60s  2.19% 62.86%      5.18s  4.35%  runtime.mapaccess1_faststr
+     2.26s  1.90% 64.76%      3.47s  2.92%  runtime.tryDeferToSpanScan
+        2s  1.68% 66.44%         2s  1.68%  runtime.pthread_cond_signal
+     1.94s  1.63% 68.07%      1.94s  1.63%  cmpbody
+     1.75s  1.47% 69.54%      1.75s  1.47%  runtime.(*fixalloc).alloc
+     1.62s  1.36% 70.90%      1.62s  1.36%  internal/runtime/maps.probeSeq.next (inline)
+     1.57s  1.32% 72.22%      2.30s  1.93%  slices.insertionSortOrdered[go.shape.string]
+     1.52s  1.28% 73.50%      1.52s  1.28%  aeshashbody
+     1.42s  1.19% 74.69%      1.42s  1.19%  internal/runtime/maps.(*Map).Used (inline)
+     1.30s  1.09% 75.78%      1.30s  1.09%  runtime.memequal
+     1.22s  1.03% 76.81%      1.22s  1.03%  runtime.pthread_cond_wait

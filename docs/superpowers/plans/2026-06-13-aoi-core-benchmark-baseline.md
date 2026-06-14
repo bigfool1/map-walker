@@ -465,7 +465,7 @@ silently included.
 
 ### Task 8: Produce And Document The Mac Logical Core Capacity Baseline
 
-- [ ] Deliver reproducible baseline artifacts, profile summaries, and the
+- [x] Deliver reproducible baseline artifacts, profile summaries, and the
   engineering report.
 
 **Task boundary:**
@@ -533,12 +533,12 @@ silently included.
 
 ## Final Acceptance
 
-- [ ] Review implementation against every acceptance criterion in
+- [x] Review implementation against every acceptance criterion in
   `docs/superpowers/specs/2026-06-13-aoi-core-benchmark-baseline-design.md`.
-- [ ] Confirm production AOI and World algorithms were not optimized or
+- [x] Confirm production AOI and World algorithms were not optimized or
   behaviorally changed.
-- [ ] Confirm AOI Core and World-plus-AOI are measured independently.
-- [ ] Confirm million-player experiments remain outside normal tests.
-- [ ] Confirm public Mac artifacts come from a clean recorded commit.
-- [ ] Run `go test ./...`.
-- [ ] Run `go vet ./...`.
+- [x] Confirm AOI Core and World-plus-AOI are measured independently.
+- [x] Confirm million-player experiments remain outside normal tests.
+- [x] Confirm public Mac artifacts come from a clean recorded commit.
+- [x] Run `go test ./...`.
+- [x] Run `go vet ./...`.

@@ -1,0 +1,27 @@
+=== 100k-10k-normal-core heap top (inuse) ===
+File: aoi-bench
+Type: inuse_space
+Time: 2026-06-14 11:07:38 CST
+Showing nodes accounting for 4773.37kB, 100% of 4773.37kB total
+Showing top 20 nodes out of 23
+      flat  flat%   sum%        cum   cum%
+ 3077.05kB 64.46% 64.46%  3077.05kB 64.46%  runtime.mallocgc
+ 1184.27kB 24.81% 89.27%  1184.27kB 24.81%  runtime/pprof.StartCPUProfile
+  512.05kB 10.73%   100%   512.05kB 10.73%  os.newFile
+         0     0%   100%  1184.27kB 24.81%  main.main
+         0     0%   100%  1184.27kB 24.81%  main.run
+         0     0%   100%   512.05kB 10.73%  os.NewFile (inline)
+         0     0%   100%   512.05kB 10.73%  os.init
+         0     0%   100%   512.05kB 10.73%  os.newFileFromNewFile
+         0     0%   100%   512.05kB 10.73%  runtime.(*scavengerState).init
+         0     0%   100%     2565kB 53.74%  runtime.allocm
+         0     0%   100%   512.05kB 10.73%  runtime.bgscavenge
+         0     0%   100%   512.05kB 10.73%  runtime.doInit (inline)
+         0     0%   100%   512.05kB 10.73%  runtime.doInit1
+         0     0%   100%  1696.32kB 35.54%  runtime.main
+         0     0%   100%     2565kB 53.74%  runtime.mstart
+         0     0%   100%     2565kB 53.74%  runtime.mstart0
+         0     0%   100%     2565kB 53.74%  runtime.mstart1
+         0     0%   100%     2565kB 53.74%  runtime.newm
+         0     0%   100%  3077.05kB 64.46%  runtime.newobject
+         0     0%   100%     2052kB 42.99%  runtime.resetspinning
