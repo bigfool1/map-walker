@@ -27,6 +27,7 @@ type Client struct {
 	messagesDrained atomic.Uint64
 	bytesDrained    atomic.Uint64
 	queueHighWater  atomic.Uint32
+	wasQueueFull    atomic.Bool
 
 	drainDelay time.Duration
 	heldDrain  chan struct{}
@@ -83,8 +84,13 @@ func (c *Client) Send(data []byte) bool {
 		c.trackQueueHighWater()
 		return true
 	default:
+		c.wasQueueFull.Store(true)
 		return false
 	}
+}
+
+func (c *Client) WasQueueFull() bool {
+	return c.wasQueueFull.Load()
 }
 
 func (c *Client) CloseSend() {

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"map-walker/internal/game"
 	"map-walker/internal/realtime"
 )
 
@@ -31,13 +33,15 @@ type ManagerConfig struct {
 }
 
 type ManagerDeps struct {
-	Hub          *realtime.Hub
-	Store        userStore
-	Provisioner  *Provisioner
-	NewClient    func(userID int64, username string) *Client
-	Now          func() time.Time
-	ManualTick   chan struct{}
-	ManualTickAck chan struct{}
+	Hub               *realtime.Hub
+	Store             userStore
+	Provisioner       *Provisioner
+	NewClient         func(userID int64, username string) *Client
+	Now               func() time.Time
+	ManualTick        chan struct{}
+	ManualTickAck     chan struct{}
+	ManualStatsTick   chan struct{}
+	ManualStatsTickAck chan struct{}
 }
 
 type ManagerStatus struct {
@@ -62,6 +66,12 @@ type Manager struct {
 
 	statusMu sync.RWMutex
 	status   ManagerStatus
+
+	snapshot atomic.Pointer[SyntheticSnapshot]
+}
+
+func (m *Manager) Snapshot() *SyntheticSnapshot {
+	return m.snapshot.Load()
 }
 
 type provisionResultMsg struct {
@@ -103,6 +113,19 @@ type managerLoop struct {
 	shuttingDown    bool
 	rampTokens      float64
 	disconnectCount uint64
+
+	totalActivated      uint64
+	totalInputs         uint64
+	totalQueueFull      uint64
+	accumulatedMessages uint64
+	accumulatedBytes    uint64
+	maxQueueHighWater   uint32
+
+	prevMessages    uint64
+	prevBytes       uint64
+	prevInputs      uint64
+	prevDisconnects uint64
+	prevQueueFull   uint64
 }
 
 func NewManager(cfg ManagerConfig, deps ManagerDeps) (*Manager, error) {
@@ -178,7 +201,10 @@ func (m *Manager) run(ctx context.Context) {
 
 	ticker := time.NewTicker(BehaviorTickInterval)
 	defer ticker.Stop()
+	statsTicker := time.NewTicker(time.Second)
+	defer statsTicker.Stop()
 	useManualTick := m.deps.ManualTick != nil
+	useManualStatsTick := m.deps.ManualStatsTick != nil
 
 	for {
 		select {
@@ -200,6 +226,17 @@ func (m *Manager) run(ctx context.Context) {
 				loop.onTick()
 				if m.deps.ManualTickAck != nil {
 					m.deps.ManualTickAck <- struct{}{}
+				}
+			}
+		case <-statsTicker.C:
+			if !useManualStatsTick {
+				loop.onStatsTick()
+			}
+		case <-m.deps.ManualStatsTick:
+			if useManualStatsTick {
+				loop.onStatsTick()
+				if m.deps.ManualStatsTickAck != nil {
+					m.deps.ManualStatsTickAck <- struct{}{}
 				}
 			}
 		}
@@ -352,6 +389,7 @@ func (l *managerLoop) processActivating(accountNumber int, slot *accountSlot) {
 		return
 	}
 	if clientReady(slot.client) {
+		l.totalActivated++
 		slot.state = accountActive
 		return
 	}
@@ -369,6 +407,7 @@ func (l *managerLoop) processActive(accountNumber int, slot *accountSlot) {
 	input, changed := slot.behavior.OnTick()
 	if changed {
 		l.deps.Hub.ApplyInput(slot.client, input)
+		l.totalInputs++
 	}
 }
 
@@ -387,8 +426,21 @@ func (l *managerLoop) handleUnexpectedDisconnect(accountNumber int, slot *accoun
 	if l.shuttingDown {
 		return
 	}
+	if slot.client.WasQueueFull() {
+		l.totalQueueFull++
+	}
+	// Done() is closed; drain goroutine finished; counters are final.
+	l.accumulateClientCounters(slot.client)
 	l.disconnectCount++
 	l.failSlot(accountNumber, slot, ErrClientDisconnected)
+}
+
+func (l *managerLoop) accumulateClientCounters(client *Client) {
+	l.accumulatedMessages += client.MessagesDrained()
+	l.accumulatedBytes += client.BytesDrained()
+	if hw := client.QueueHighWater(); hw > l.maxQueueHighWater {
+		l.maxQueueHighWater = hw
+	}
 }
 
 func (l *managerLoop) clientDisconnected(client *Client) bool {
@@ -423,6 +475,7 @@ func (l *managerLoop) shutdown() {
 			continue
 		}
 		<-slot.client.Done()
+		l.accumulateClientCounters(slot.client)
 		slot.client = nil
 		slot.behavior = nil
 	}
@@ -451,6 +504,95 @@ func (l *managerLoop) publishStatus() {
 	l.statusMu.Lock()
 	l.status = status
 	l.statusMu.Unlock()
+}
+
+func (l *managerLoop) onStatsTick() {
+	// Aggregate live client counters; disconnected clients were already
+	// accumulated into l.accumulatedMessages / l.accumulatedBytes.
+	totalMessages := l.accumulatedMessages
+	totalBytes := l.accumulatedBytes
+	maxHW := l.maxQueueHighWater
+
+	var provisioning, provisioned, activating, active, moving, idle, failed int
+	for n := 1; n <= l.cfg.TargetCount; n++ {
+		slot := l.slots[n]
+		switch slot.state {
+		case accountUnavailable:
+			provisioning++
+		case accountPending:
+			provisioned++
+		case accountActivating:
+			activating++
+			if slot.client != nil {
+				totalMessages += slot.client.MessagesDrained()
+				totalBytes += slot.client.BytesDrained()
+				if hw := slot.client.QueueHighWater(); hw > maxHW {
+					maxHW = hw
+				}
+			}
+		case accountActive:
+			active++
+			if slot.client != nil {
+				totalMessages += slot.client.MessagesDrained()
+				totalBytes += slot.client.BytesDrained()
+				if hw := slot.client.QueueHighWater(); hw > maxHW {
+					maxHW = hw
+				}
+			}
+			if slot.behavior != nil && isMoving(slot.behavior.CurrentInput()) {
+				moving++
+			} else {
+				idle++
+			}
+		case accountFailed:
+			failed++
+		}
+	}
+
+	messagesRate := totalMessages - l.prevMessages
+	bytesRate := totalBytes - l.prevBytes
+	inputsRate := l.totalInputs - l.prevInputs
+	disconnectsRate := l.disconnectCount - l.prevDisconnects
+	queueFullRate := l.totalQueueFull - l.prevQueueFull
+
+	l.prevMessages = totalMessages
+	l.prevBytes = totalBytes
+	l.prevInputs = l.totalInputs
+	l.prevDisconnects = l.disconnectCount
+	l.prevQueueFull = l.totalQueueFull
+
+	snap := &SyntheticSnapshot{
+		Target:         l.cfg.TargetCount,
+		Provisioning:   provisioning,
+		Provisioned:    provisioned,
+		Activating:     activating,
+		Active:         active,
+		Moving:         moving,
+		Idle:           idle,
+		Failed:         failed,
+		QueueHighWater: maxHW,
+
+		InputsRate:      inputsRate,
+		MessagesRate:    messagesRate,
+		BytesRate:       bytesRate,
+		DisconnectsRate: disconnectsRate,
+		QueueFullRate:   queueFullRate,
+
+		TotalActivated:   l.totalActivated,
+		TotalFailed:      uint64(failed),
+		TotalDisconnects: l.disconnectCount,
+		TotalQueueFull:   l.totalQueueFull,
+		TotalInputs:      l.totalInputs,
+		TotalMessages:    totalMessages,
+		TotalBytes:       totalBytes,
+
+		SampledAt: l.deps.Now(),
+	}
+	l.snapshot.Store(snap)
+}
+
+func isMoving(input game.InputState) bool {
+	return input.Up || input.Down || input.Left || input.Right
 }
 
 func clientReady(client *Client) bool {

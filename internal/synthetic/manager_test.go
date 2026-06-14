@@ -247,15 +247,17 @@ type managerTestOptions struct {
 }
 
 type managerTestEnv struct {
-	manager       *Manager
-	hub           *realtime.Hub
-	simulation    chan time.Time
-	broadcast     chan time.Time
-	persist       chan time.Time
-	manualTick    chan struct{}
-	manualTickAck chan struct{}
-	persister     *recordingPersister
-	cleanup       func()
+	manager            *Manager
+	hub                *realtime.Hub
+	simulation         chan time.Time
+	broadcast          chan time.Time
+	persist            chan time.Time
+	manualTick         chan struct{}
+	manualTickAck      chan struct{}
+	manualStatsTick    chan struct{}
+	manualStatsTickAck chan struct{}
+	persister          *recordingPersister
+	cleanup            func()
 }
 
 func startManagerTest(t *testing.T, opts managerTestOptions) *managerTestEnv {
@@ -283,12 +285,16 @@ func startManagerTest(t *testing.T, opts managerTestOptions) *managerTestEnv {
 
 	manualTick := make(chan struct{}, 32)
 	manualTickAck := make(chan struct{}, 1)
+	manualStatsTick := make(chan struct{}, 1)
+	manualStatsTickAck := make(chan struct{}, 1)
 	deps := ManagerDeps{
-		Hub:           hub,
-		Store:         db,
-		NewClient:     opts.newClient,
-		ManualTick:    manualTick,
-		ManualTickAck: manualTickAck,
+		Hub:                hub,
+		Store:              db,
+		NewClient:          opts.newClient,
+		ManualTick:         manualTick,
+		ManualTickAck:      manualTickAck,
+		ManualStatsTick:    manualStatsTick,
+		ManualStatsTickAck: manualStatsTickAck,
 	}
 	if opts.now != nil {
 		deps.Now = opts.now
@@ -304,14 +310,16 @@ func startManagerTest(t *testing.T, opts managerTestOptions) *managerTestEnv {
 	manager.Start(context.Background())
 
 	env := &managerTestEnv{
-		manager:       manager,
-		hub:           hub,
-		simulation:    simulation,
-		broadcast:     broadcast,
-		persist:       persist,
-		manualTick:    manualTick,
-		manualTickAck: manualTickAck,
-		persister:     persister,
+		manager:            manager,
+		hub:                hub,
+		simulation:         simulation,
+		broadcast:          broadcast,
+		persist:            persist,
+		manualTick:         manualTick,
+		manualTickAck:      manualTickAck,
+		manualStatsTick:    manualStatsTick,
+		manualStatsTickAck: manualStatsTickAck,
+		persister:          persister,
 	}
 	env.cleanup = func() {
 		manager.Stop()
@@ -323,6 +331,11 @@ func startManagerTest(t *testing.T, opts managerTestOptions) *managerTestEnv {
 func (env *managerTestEnv) tickManager() {
 	env.manualTick <- struct{}{}
 	<-env.manualTickAck
+}
+
+func (env *managerTestEnv) tickStats() {
+	env.manualStatsTick <- struct{}{}
+	<-env.manualStatsTickAck
 }
 
 func (env *managerTestEnv) driveSimulation() {
