@@ -385,7 +385,7 @@ silently included.
 
 ### Task 7: Add Matrix Process Isolation And JSON/CSV Aggregation
 
-- [ ] Deliver a parent command that runs representative or exhaustive frozen
+- [x] Deliver a parent command that runs representative or exhaustive frozen
   scenarios independently and preserves failures.
 
 **Task boundary:**
