@@ -18,7 +18,14 @@ import (
 	"map-walker/internal/realtime"
 	"map-walker/internal/server"
 	"map-walker/internal/storage"
+	"map-walker/internal/synthetic"
 )
+
+type syntheticFlags struct {
+	count         int
+	rampRate      int
+	autoProvision bool
+}
 
 func main() {
 	// .env 文件存在则加载，不存在则忽略
@@ -31,7 +38,16 @@ func main() {
 	defaultDSN := envDefault("DB_DSN", storage.DefaultDBPath)
 	dbDriver := flag.String("db-driver", defaultDriver, "数据库驱动 (sqlite / mysql)")
 	dbDSN := flag.String("db-dsn", defaultDSN, "数据库 DSN (SQLite 文件路径 或 MySQL user:pass@tcp(host:port)/dbname)")
+
+	synFlags := syntheticFlags{}
+	flag.IntVar(&synFlags.count, "synthetic-clients", 0, "合成客户端数量 (0 = 禁用)")
+	flag.IntVar(&synFlags.rampRate, "synthetic-ramp-rate", 10, "合成客户端每秒激活速率 (0 = 无限制)")
+	flag.BoolVar(&synFlags.autoProvision, "synthetic-auto-provision", false, "自动创建缺失的合成账号")
 	flag.Parse()
+
+	if err := validateSyntheticFlags(synFlags); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
 
 	db, err := storage.Open(*dbDriver, *dbDSN)
 	if err != nil {
@@ -57,6 +73,15 @@ func main() {
 		}, true
 	}, worker)
 	go hub.Run()
+
+	var manager *synthetic.Manager
+	if synFlags.count > 0 {
+		manager, err = buildSyntheticManager(hub, db, synFlags)
+		if err != nil {
+			log.Fatalf("build synthetic manager: %v", err)
+		}
+		manager.Start(context.Background())
+	}
 
 	srv := server.New(hub, auth.NewService(db))
 
@@ -84,12 +109,49 @@ func main() {
 		log.Printf("http server shutdown error: %v", err)
 	}
 
+	if manager != nil {
+		manager.Stop()
+	}
+
 	hub.Stop()
 
 	if err := db.Close(); err != nil {
 		log.Printf("database close error: %v", err)
 	}
 	log.Println("shutdown complete")
+}
+
+func buildSyntheticManager(hub *realtime.Hub, db *storage.DB, flags syntheticFlags) (*synthetic.Manager, error) {
+	password := ""
+	if flags.autoProvision {
+		password = os.Getenv("MAP_WALKER_SYNTHETIC_PASSWORD")
+	}
+
+	cfg := synthetic.ManagerConfig{
+		TargetCount:   flags.count,
+		RampRate:      flags.rampRate,
+		AutoProvision: flags.autoProvision,
+		Password:      password,
+		Behavior:      synthetic.DefaultBehaviorConfig(),
+	}
+
+	deps := synthetic.ManagerDeps{
+		Hub:         hub,
+		Store:       db,
+		Provisioner: synthetic.NewProvisioner(db),
+	}
+
+	return synthetic.NewManager(cfg, deps)
+}
+
+func validateSyntheticFlags(flags syntheticFlags) error {
+	if flags.count < 0 {
+		return fmt.Errorf("synthetic-clients must be non-negative, got %d", flags.count)
+	}
+	if flags.rampRate < 0 {
+		return fmt.Errorf("synthetic-ramp-rate must be non-negative, got %d", flags.rampRate)
+	}
+	return nil
 }
 
 // envDefault 返回环境变量的值，若未设置则返回 fallback。
