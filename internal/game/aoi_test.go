@@ -67,7 +67,7 @@ func TestAOINineCellCandidateCoverageAndDistanceFiltering(t *testing.T) {
 
 	nearLat, nearLng := localLatLng(aoi.config, -400, 0)
 	changes := aoi.Insert("near-neighbor", nearLat, nearLng)
-	if !slicesEqual(changes.Entered, []string{"center"}) {
+	if !sliceSetEqual(changes.Entered, []string{"center"}) {
 		t.Fatalf("near-neighbor entered = %+v, want [center]", changes.Entered)
 	}
 
@@ -93,7 +93,7 @@ func TestAOIExactFiveHundredMeterEntry(t *testing.T) {
 	lat, lng := localLatLng(aoi.config, 500, 0)
 	changes := aoi.Insert("bob", lat, lng)
 
-	if !slicesEqual(changes.Entered, []string{"alice"}) {
+	if !sliceSetEqual(changes.Entered, []string{"alice"}) {
 		t.Fatalf("bob entered = %+v, want [alice]", changes.Entered)
 	}
 	if !aoi.isSymmetricVisible("alice", "bob") {
@@ -151,11 +151,43 @@ func TestAOIRemovalBeyondSixHundredMeters(t *testing.T) {
 
 	bobLat, bobLng = localLatLng(aoi.config, 601, 0)
 	changes = aoi.Move("bob", bobLat, bobLng)
-	if !slicesEqual(changes.Left, []string{"alice"}) {
+	if !sliceSetEqual(changes.Left, []string{"alice"}) {
 		t.Fatalf("bob left = %+v, want [alice]", changes.Left)
 	}
 	if aoi.isSymmetricVisible("alice", "bob") {
 		t.Fatal("expected relationship removed beyond 600m")
+	}
+}
+
+func TestAOIMultiCellCandidatesNoOmissionOrDuplication(t *testing.T) {
+	aoi := newTestAOI()
+
+	centerLat, centerLng := localLatLng(aoi.config, 300, 300)
+	aoi.Insert("center", centerLat, centerLng)
+
+	eastLat, eastLng := localLatLng(aoi.config, 650, 300)
+	aoi.Insert("east", eastLat, eastLng)
+	northLat, northLng := localLatLng(aoi.config, 300, 700)
+	aoi.Insert("north", northLat, northLng)
+	westLat, westLng := localLatLng(aoi.config, -200, 300)
+	aoi.Insert("west", westLat, westLng)
+
+	wantNeighbors := []string{"east", "north", "west"}
+	if !sliceSetEqual(aoi.VisibleNeighbors("center"), wantNeighbors) {
+		t.Fatalf("center neighbors = %+v, want %+v", aoi.VisibleNeighbors("center"), wantNeighbors)
+	}
+
+	recalc := aoi.RecalculateRelationships("center")
+	if len(recalc.Entered) != 0 || len(recalc.Left) != 0 {
+		t.Fatalf("second recalc = %+v, want no changes", recalc)
+	}
+	if pairs := aoi.VisibleRelationshipPairs(); pairs != 3 {
+		t.Fatalf("relationship pairs = %d, want 3", pairs)
+	}
+	for _, neighborID := range wantNeighbors {
+		if !aoi.isSymmetricVisible("center", neighborID) {
+			t.Fatalf("expected symmetric visibility between center and %s", neighborID)
+		}
 	}
 }
 
@@ -221,7 +253,7 @@ func TestAOIDuplicateProcessingIsIdempotent(t *testing.T) {
 	aliceChanges := aoi.Move("alice", aliceLat, aliceLng)
 	bobChanges := aoi.Move("bob", bobLat, bobLng)
 
-	if !slicesEqual(aliceChanges.Entered, []string{"bob"}) {
+	if !sliceSetEqual(aliceChanges.Entered, []string{"bob"}) {
 		t.Fatalf("alice entered = %+v, want [bob]", aliceChanges.Entered)
 	}
 	if len(bobChanges.Entered) != 0 {
@@ -253,7 +285,7 @@ func TestAOILargeMoveChecksExistingNeighborsOutsideNineCells(t *testing.T) {
 	bobLat, bobLng = localLatLng(aoi.config, 5000, 0)
 	changes := aoi.Move("bob", bobLat, bobLng)
 
-	if !slicesEqual(changes.Left, []string{"alice"}) {
+	if !sliceSetEqual(changes.Left, []string{"alice"}) {
 		t.Fatalf("bob left = %+v, want [alice]", changes.Left)
 	}
 	if aoi.isSymmetricVisible("alice", "bob") {
@@ -325,6 +357,22 @@ func slicesEqual(a, b []string) bool {
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sliceSetEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(a))
+	for _, value := range a {
+		seen[value] = struct{}{}
+	}
+	for _, value := range b {
+		if _, ok := seen[value]; !ok {
 			return false
 		}
 	}

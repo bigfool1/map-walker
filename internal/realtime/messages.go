@@ -85,13 +85,19 @@ func EncodeSelfState(tick uint64, player game.PlayerState) ([]byte, error) {
 }
 
 func EncodeVisibleEntitiesSnapshot(tick uint64, players []game.PlayerState) ([]byte, error) {
+	var sorted []game.PlayerState
 	if players == nil {
-		players = []game.PlayerState{}
+		sorted = []game.PlayerState{}
+	} else {
+		sorted = append([]game.PlayerState(nil), players...)
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].ID < sorted[j].ID
+		})
 	}
 	return json.Marshal(VisibleEntitiesSnapshotMessage{
 		Type:    MessageTypeVisibleEntitiesSnapshot,
 		Tick:    tick,
-		Players: players,
+		Players: sorted,
 	})
 }
 

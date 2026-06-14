@@ -76,6 +76,49 @@ func TestEncodeVisibleEntitiesSnapshot(t *testing.T) {
 	}
 }
 
+func TestEncodeVisibleEntitiesSnapshotSortsByPlayerID(t *testing.T) {
+	players := []game.PlayerState{
+		{
+			ID:         "charlie",
+			Username:   "Charlie",
+			Lat:        31.2310,
+			Lng:        121.4739,
+			Appearance: game.Appearance{Color: "#112233", Shape: game.ShapeSquare},
+		},
+		{
+			ID:         "alice",
+			Username:   "Alice",
+			Lat:        31.2304,
+			Lng:        121.4737,
+			Appearance: game.Appearance{Color: "#3388ff", Shape: game.ShapeCircle},
+		},
+		{
+			ID:         "bob",
+			Username:   "Bob",
+			Lat:        31.2308,
+			Lng:        121.4737,
+			Appearance: game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond},
+		},
+	}
+
+	data, err := EncodeVisibleEntitiesSnapshot(42, players)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	want := `{"type":"visible_entities_snapshot","tick":42,"players":[{"id":"alice","username":"Alice","lat":31.2304,"lng":121.4737,"appearance":{"color":"#3388ff","shape":"circle"}},{"id":"bob","username":"Bob","lat":31.2308,"lng":121.4737,"appearance":{"color":"#ff6600","shape":"diamond"}},{"id":"charlie","username":"Charlie","lat":31.231,"lng":121.4739,"appearance":{"color":"#112233","shape":"square"}}]}`
+	if string(data) != want {
+		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
+	}
+
+	wantInputOrder := []string{"charlie", "alice", "bob"}
+	for i, id := range wantInputOrder {
+		if players[i].ID != id {
+			t.Fatalf("input order changed at %d: got %s, want %s", i, players[i].ID, id)
+		}
+	}
+}
+
 func TestEncodeVisibleEntitiesSnapshotEmptyPlayers(t *testing.T) {
 	data, err := EncodeVisibleEntitiesSnapshot(7, nil)
 	if err != nil {
