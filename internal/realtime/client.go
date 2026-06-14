@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -12,10 +13,17 @@ import (
 
 const DefaultSendBufferSize = 16
 
+// pingIntervalNs and pingTimeoutNs store durations as nanoseconds so tests can
+// safely override them from a different goroutine without a data race.
 var (
-	pingInterval = 15 * time.Second
-	pingTimeout  = 5 * time.Second
+	pingIntervalNs atomic.Int64
+	pingTimeoutNs  atomic.Int64
 )
+
+func init() {
+	pingIntervalNs.Store(int64(15 * time.Second))
+	pingTimeoutNs.Store(int64(5 * time.Second))
+}
 
 type Client struct {
 	id        int64
@@ -114,7 +122,7 @@ func (c *Client) writeLoop(ctx context.Context) {
 	// rule of making one task responsible for socket writes so concurrent sends
 	// do not interleave frames or fight over connection state.
 	for data := range c.send {
-		writeCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+		writeCtx, cancel := context.WithTimeout(ctx, time.Duration(pingTimeoutNs.Load()))
 		err := c.conn.Write(writeCtx, websocket.MessageText, data)
 		cancel()
 		if err != nil {
@@ -125,7 +133,7 @@ func (c *Client) writeLoop(ctx context.Context) {
 }
 
 func (c *Client) heartbeatLoop(ctx context.Context) {
-	ticker := time.NewTicker(pingInterval)
+	ticker := time.NewTicker(time.Duration(pingIntervalNs.Load()))
 	defer ticker.Stop()
 
 	for {
@@ -133,7 +141,7 @@ func (c *Client) heartbeatLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+			pingCtx, cancel := context.WithTimeout(ctx, time.Duration(pingTimeoutNs.Load()))
 			err := c.conn.Ping(pingCtx)
 			cancel()
 			if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1093,7 +1094,7 @@ func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
 }
 
 func TestHubLogsAOIStats(t *testing.T) {
-	var logOutput bytes.Buffer
+	var logOutput syncBuffer
 	originalWriter := log.Writer()
 	log.SetOutput(&logOutput)
 	t.Cleanup(func() { log.SetOutput(originalWriter) })
@@ -1365,6 +1366,25 @@ func mustReceiveData(t *testing.T, client *testClient) []byte {
 		t.Fatal("timed out waiting for message")
 		return nil
 	}
+}
+
+// syncBuffer is a bytes.Buffer safe for concurrent reads and writes,
+// needed when the Hub goroutine logs while the test goroutine polls the output.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func assertNoMessage(t *testing.T, client *testClient) {

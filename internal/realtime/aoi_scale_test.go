@@ -1,7 +1,6 @@
 package realtime
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -52,7 +51,7 @@ func TestAOIThousandClientScenarioDeterministic(t *testing.T) {
 func runThousandClientScenario(t *testing.T) thousandClientMetrics {
 	t.Helper()
 
-	var logOutput bytes.Buffer
+	var logOutput syncBuffer
 	originalWriter := log.Writer()
 	log.SetOutput(&logOutput)
 	t.Cleanup(func() { log.SetOutput(originalWriter) })
@@ -272,7 +271,7 @@ func assertNoPendingMessages(t *testing.T, client *testClient) {
 	}
 }
 
-func waitForStatsLog(t *testing.T, logOutput *bytes.Buffer, needle string) {
+func waitForStatsLog(t *testing.T, logOutput *syncBuffer, needle string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {

@@ -18,13 +18,13 @@ func withFastHeartbeat(t *testing.T) {
 }
 
 func setHeartbeatTiming(interval, timeout time.Duration) func() {
-	oldInterval := pingInterval
-	oldTimeout := pingTimeout
-	pingInterval = interval
-	pingTimeout = timeout
+	oldInterval := pingIntervalNs.Load()
+	oldTimeout := pingTimeoutNs.Load()
+	pingIntervalNs.Store(int64(interval))
+	pingTimeoutNs.Store(int64(timeout))
 	return func() {
-		pingInterval = oldInterval
-		pingTimeout = oldTimeout
+		pingIntervalNs.Store(oldInterval)
+		pingTimeoutNs.Store(oldTimeout)
 	}
 }
 
