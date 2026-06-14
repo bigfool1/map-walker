@@ -280,7 +280,7 @@ func startManagerTest(t *testing.T, opts managerTestOptions) *managerTestEnv {
 	}
 
 	persister := &recordingPersister{}
-	hub, simulation, broadcast, persist := realtime.NewManualTickHub(config, loader, persister)
+	hub, simulation, broadcast, persist, _ := realtime.NewManualTickHub(config, loader, persister)
 	go hub.Run()
 
 	manualTick := make(chan struct{}, 32)
@@ -590,7 +590,7 @@ func TestManagerAutoProvisionPartialFailure(t *testing.T) {
 
 	config := game.DefaultConfig()
 	persister := &recordingPersister{}
-	hub, simulation, broadcast, persist := realtime.NewManualTickHub(config, testAccountLoader(nil), persister)
+	hub, simulation, broadcast, persist, _ := realtime.NewManualTickHub(config, testAccountLoader(nil), persister)
 	go hub.Run()
 	_ = simulation
 	_ = broadcast

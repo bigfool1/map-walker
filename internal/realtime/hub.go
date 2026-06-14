@@ -3,6 +3,7 @@ package realtime
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"map-walker/internal/game"
@@ -63,6 +64,11 @@ type Hub struct {
 	statsTick          <-chan time.Time
 	stopTickers        func()
 	stats              intervalStats
+	snapshot           atomic.Pointer[HubSnapshot]
+}
+
+func (h *Hub) Snapshot() *HubSnapshot {
+	return h.snapshot.Load()
 }
 
 type intervalStats struct {
@@ -618,19 +624,35 @@ func (h *Hub) logStats() {
 	h.stats.aoiRelationshipsEntered += aoiStats.RelationshipsEntered
 	h.stats.aoiRelationshipsLeft += aoiStats.RelationshipsLeft
 
+	snap := &HubSnapshot{
+		ConnectedClients:      len(h.clients),
+		AcceptedInputs:        h.stats.acceptedInputs,
+		SimulationTicks:       h.stats.simulationTicks,
+		MovedPlayers:          h.stats.movedPlayers,
+		AOICandidatePairs:     h.stats.aoiCandidatePairs,
+		AOIDistanceChecks:     h.stats.aoiDistanceChecks,
+		RelationshipsEntered:  h.stats.aoiRelationshipsEntered,
+		RelationshipsLeft:     h.stats.aoiRelationshipsLeft,
+		ReplicationMessages:   h.stats.replicationMessages,
+		ReplicationRecipients: h.stats.replicationRecipients,
+		ReplicationBytes:      h.stats.replicationBytes,
+		SampledAt:             time.Now(),
+	}
+	h.snapshot.Store(snap)
+
 	log.Printf(
 		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d",
-		len(h.clients),
-		h.stats.acceptedInputs,
-		h.stats.simulationTicks,
-		h.stats.movedPlayers,
-		h.stats.aoiCandidatePairs,
-		h.stats.aoiDistanceChecks,
-		h.stats.aoiRelationshipsEntered,
-		h.stats.aoiRelationshipsLeft,
-		h.stats.replicationMessages,
-		h.stats.replicationRecipients,
-		h.stats.replicationBytes,
+		snap.ConnectedClients,
+		snap.AcceptedInputs,
+		snap.SimulationTicks,
+		snap.MovedPlayers,
+		snap.AOICandidatePairs,
+		snap.AOIDistanceChecks,
+		snap.RelationshipsEntered,
+		snap.RelationshipsLeft,
+		snap.ReplicationMessages,
+		snap.ReplicationRecipients,
+		snap.ReplicationBytes,
 	)
 	h.stats = intervalStats{}
 }

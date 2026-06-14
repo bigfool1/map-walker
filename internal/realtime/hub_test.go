@@ -1313,6 +1313,16 @@ func (c *testClient) CloseSend() {
 	}
 }
 
+func (c *testClient) drainAll() {
+	for {
+		select {
+		case <-c.send:
+		default:
+			return
+		}
+	}
+}
+
 func mustReceiveInitialization(t *testing.T, client *testClient) (SelfStateMessage, VisibleEntitiesSnapshotMessage) {
 	t.Helper()
 	var self SelfStateMessage
@@ -1363,5 +1373,151 @@ func assertNoMessage(t *testing.T, client *testClient) {
 	case data := <-client.send:
 		t.Fatalf("unexpected message: %s", data)
 	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestHubSnapshotNilBeforeFirstStatsTick(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	if hub.Snapshot() != nil {
+		t.Fatal("expected nil snapshot before first stats tick")
+	}
+}
+
+func TestHubSnapshotConnectedClientsCount(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1, 8)
+	bob := NewTestClient(2, 8)
+	hub.Register(alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, alice)
+	mustReceiveInitialization(t, bob)
+
+	statsTick <- time.Now()
+	// Poll until snapshot is published.
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+	if snap == nil {
+		t.Fatal("snapshot is nil after stats tick")
+	}
+	if snap.ConnectedClients != 2 {
+		t.Errorf("ConnectedClients=%d want 2", snap.ConnectedClients)
+	}
+}
+
+func TestHubSnapshotReplicationCounted(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1, 8)
+	bob := NewTestClient(2, 8)
+	hub.Register(alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, alice)
+	mustReceiveInitialization(t, bob)
+
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+	// Wait for broadcast to be processed before firing stats tick.
+	mustReceiveReplicationUpdate(t, alice)
+	bob.drainAll()
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+	if snap == nil {
+		t.Fatal("snapshot is nil after stats tick")
+	}
+	if snap.ReplicationMessages == 0 {
+		t.Error("ReplicationMessages=0 after broadcast with movement")
+	}
+	if snap.ReplicationBytes == 0 {
+		t.Error("ReplicationBytes=0 after broadcast with movement")
+	}
+	if snap.SimulationTicks == 0 {
+		t.Error("SimulationTicks=0 after simulation tick")
+	}
+}
+
+func TestHubSnapshotStableUntilNextTick(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	first := hub.Snapshot()
+	if first == nil {
+		t.Fatal("first snapshot is nil")
+	}
+	firstSampledAt := first.SampledAt
+	firstClients := first.ConnectedClients
+
+	// Fire second stats tick without additional activity.
+	statsTick <- time.Now()
+	deadline = time.Now().Add(time.Second)
+	for hub.Snapshot() == first && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+
+	// Original snapshot must not have mutated.
+	if first.SampledAt != firstSampledAt {
+		t.Error("first snapshot mutated: SampledAt changed")
+	}
+	if first.ConnectedClients != firstClients {
+		t.Errorf("first snapshot mutated: ConnectedClients changed from %d to %d", firstClients, first.ConnectedClients)
+	}
+	if hub.Snapshot() == first {
+		t.Error("expected a new snapshot pointer after second stats tick")
+	}
+}
+
+func TestHubSnapshotAfterStop(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+
+	alice := NewTestClient(1, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+
+	hub.Stop()
+
+	if hub.Snapshot() != snap {
+		t.Error("snapshot changed after Stop")
+	}
+	if snap.ConnectedClients != 1 {
+		t.Errorf("ConnectedClients=%d want 1", snap.ConnectedClients)
 	}
 }

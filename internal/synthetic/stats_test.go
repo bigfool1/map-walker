@@ -122,25 +122,33 @@ func TestSnapshotRatesReflectLastInterval(t *testing.T) {
 
 	// First stats tick — establishes baseline.
 	env.tickStats()
+	first := env.manager.Snapshot()
 
-	// Drive more activity so the second interval has non-zero deltas.
+	// Drive more activity so messages are drained between the two stats ticks.
 	for i := 0; i < 20; i++ {
 		env.tickManager()
 		env.driveSimulation()
 	}
-	env.tickStats()
 
-	snap := env.manager.Snapshot()
-	if snap == nil {
-		t.Fatal("nil snapshot")
+	// Wait until the lifetime total has grown (Hub and drain goroutine are async).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		env.tickStats()
+		snap := env.manager.Snapshot()
+		if snap.TotalMessages > first.TotalMessages {
+			// The rate in this interval must also be non-zero.
+			if snap.MessagesRate == 0 {
+				t.Error("MessagesRate=0 despite TotalMessages growing")
+			}
+			if snap.BytesRate == 0 {
+				t.Error("BytesRate=0 despite TotalBytes growing")
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	// After activity, messages and bytes rates must be positive.
-	if snap.MessagesRate == 0 {
-		t.Error("MessagesRate=0 after replication ticks")
-	}
-	if snap.BytesRate == 0 {
-		t.Error("BytesRate=0 after replication ticks")
-	}
+	t.Errorf("TotalMessages did not increase after replication ticks; first=%d current=%d",
+		first.TotalMessages, env.manager.Snapshot().TotalMessages)
 }
 
 func TestSnapshotImmutableAfterNextTick(t *testing.T) {
