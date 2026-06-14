@@ -11,7 +11,7 @@ import (
 )
 
 func TestClientUsesSharedSendBufferCapacity(t *testing.T) {
-	client := NewClient(1, "synthetic_1")
+	client := NewClientWithHeldDrain(1, "synthetic_1", realtime.DefaultSendBufferSize)
 	defer client.CloseSend()
 
 	payload := []byte("x")

@@ -29,13 +29,37 @@ type Client struct {
 	queueHighWater  atomic.Uint32
 
 	drainDelay time.Duration
+	heldDrain  chan struct{}
 }
 
 func NewClient(userID int64, username string) *Client {
+	return NewClientWithSendBuffer(userID, username, realtime.DefaultSendBufferSize)
+}
+
+func NewClientWithHeldDrain(userID int64, username string, sendBuffer int) *Client {
+	if sendBuffer <= 0 {
+		sendBuffer = 1
+	}
+	client := &Client{
+		id:        userID,
+		username:  username,
+		send:      make(chan []byte, sendBuffer),
+		ready:     make(chan struct{}),
+		done:      make(chan struct{}),
+		heldDrain: make(chan struct{}),
+	}
+	go client.drainLoop()
+	return client
+}
+
+func NewClientWithSendBuffer(userID int64, username string, sendBuffer int) *Client {
+	if sendBuffer <= 0 {
+		sendBuffer = realtime.DefaultSendBufferSize
+	}
 	client := &Client{
 		id:       userID,
 		username: username,
-		send:     make(chan []byte, realtime.DefaultSendBufferSize),
+		send:     make(chan []byte, sendBuffer),
 		ready:    make(chan struct{}),
 		done:     make(chan struct{}),
 	}
@@ -66,6 +90,9 @@ func (c *Client) Send(data []byte) bool {
 func (c *Client) CloseSend() {
 	c.closeOnce.Do(func() {
 		close(c.send)
+		if c.heldDrain != nil {
+			close(c.heldDrain)
+		}
 	})
 }
 
@@ -124,6 +151,10 @@ func (c *Client) trackQueueHighWater() {
 
 func (c *Client) drainLoop() {
 	defer close(c.done)
+
+	if c.heldDrain != nil {
+		<-c.heldDrain
+	}
 
 	var drained int
 	for data := range c.send {
