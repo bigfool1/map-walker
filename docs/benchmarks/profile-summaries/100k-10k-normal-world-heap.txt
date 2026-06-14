@@ -1,27 +1,25 @@
-=== 100k-10k-normal-world heap top (inuse) ===
 File: aoi-bench
 Type: inuse_space
-Time: 2026-06-14 11:09:35 CST
-Showing nodes accounting for 5809.47kB, 100% of 5809.47kB total
-Showing top 20 nodes out of 29
+Time: 2026-06-14 17:22:49 CST
+Showing nodes accounting for 4779.40kB, 100% of 4779.40kB total
       flat  flat%   sum%        cum   cum%
- 2564.01kB 44.13% 44.13%  2564.01kB 44.13%  runtime.mallocgc
- 1184.27kB 20.39% 64.52%  1184.27kB 20.39%  runtime/pprof.StartCPUProfile
- 1037.06kB 17.85% 82.37%  1037.06kB 17.85%  runtime/pprof.(*profMap).lookup
-  512.08kB  8.81% 91.19%   512.08kB  8.81%  compress/gzip.NewWriterLevel
-  512.05kB  8.81%   100%   512.05kB  8.81%  time.Sleep
-         0     0%   100%  1184.27kB 20.39%  main.main
-         0     0%   100%  1184.27kB 20.39%  main.run
-         0     0%   100%   512.01kB  8.81%  runtime.(*timer).maybeAdd
-         0     0%   100%   512.01kB  8.81%  runtime.(*timer).modify
-         0     0%   100%   512.01kB  8.81%  runtime.(*timer).reset (inline)
-         0     0%   100%   512.01kB  8.81%  runtime.(*timers).addHeap
-         0     0%   100%     2052kB 35.32%  runtime.allocm
-         0     0%   100%   512.01kB  8.81%  runtime.growslice
-         0     0%   100%  1184.27kB 20.39%  runtime.main
-         0     0%   100%  1025.01kB 17.64%  runtime.mcall
-         0     0%   100%     1539kB 26.49%  runtime.mstart
-         0     0%   100%     1539kB 26.49%  runtime.mstart0
-         0     0%   100%     1539kB 26.49%  runtime.mstart1
-         0     0%   100%     2052kB 35.32%  runtime.newm
-         0     0%   100%     2052kB 35.32%  runtime.newobject
+    1539kB 32.20% 32.20%     1539kB 32.20%  runtime.mallocgc
+ 1184.27kB 24.78% 56.98%  1184.27kB 24.78%  runtime/pprof.StartCPUProfile
+ 1032.02kB 21.59% 78.57%  1032.02kB 21.59%  runtime/pprof.(*profMap).lookup
+  512.05kB 10.71% 89.29%   512.05kB 10.71%  map-walker/internal/benchmark/aoiworkload.Generate
+  512.05kB 10.71%   100%   512.05kB 10.71%  time.Sleep
+         0     0%   100%  1696.33kB 35.49%  main.main
+         0     0%   100%  1696.33kB 35.49%  main.run
+         0     0%   100%     1539kB 32.20%  runtime.allocm
+         0     0%   100%  1696.33kB 35.49%  runtime.main
+         0     0%   100%     1539kB 32.20%  runtime.mstart
+         0     0%   100%     1539kB 32.20%  runtime.mstart0
+         0     0%   100%     1539kB 32.20%  runtime.mstart1
+         0     0%   100%     1539kB 32.20%  runtime.newm
+         0     0%   100%     1539kB 32.20%  runtime.newobject
+         0     0%   100%     1539kB 32.20%  runtime.resetspinning
+         0     0%   100%     1539kB 32.20%  runtime.schedule
+         0     0%   100%     1539kB 32.20%  runtime.startm
+         0     0%   100%     1539kB 32.20%  runtime.wakep
+         0     0%   100%  1032.02kB 21.59%  runtime/pprof.(*profileBuilder).addCPUData
+         0     0%   100%  1544.07kB 32.31%  runtime/pprof.profileWriter
