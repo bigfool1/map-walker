@@ -83,64 +83,68 @@ The following baseline scenarios **could not complete** on the Mac M5 16GB:
 
 ---
 
-## 4. Profile Analysis — 100k/10k/normal
+## 4. Profile Analysis — 100k/10k/normal (Post-A1 Optimization)
+
+Profile data reflects the A1 allocation-optimized codebase (commit `d174e9a`).
 
 ### 4.1 Core Tick CPU Profile
 
-Top consumers (107.67s sampling duration, 118.97s total samples):
+Top consumers (47.51s sampling duration, 47.61s total samples):
 
 | Function | Flat% | Cum% | Category |
 |---|---|---|---|
-| `runtime.memclrNoHeapPointers` | 24.24% | 24.24% | GC / zeroing |
-| `runtime.mapaccess2_faststr` | 10.51% | 13.92% | Map lookup |
-| `runtime.mapassign_faststr` | 4.76% | 27.35% | Map insert |
-| `runtime.scanObject` | 3.62% | 14.37% | GC scan |
-| `runtime.(*Iter).Next` | 2.76% | 6.23% | Map iteration |
-| `slices.partitionOrdered` | 2.47% | 3.72% | String sort |
-| `runtime.mapaccess1_faststr` | 2.19% | 4.35% | Map lookup |
+| `runtime.mapaccess2_faststr` | 9.68% | 27.05% | Map lookup (2-key) |
+| `runtime.(*Iter).Next` | 8.88% | 10.65% | Map iteration |
+| `runtime.mapaccess1_faststr` | 5.99% | 13.57% | Map lookup (1-key) |
+| `runtime.memequal` | 4.68% | 4.68% | String comparison |
+| `runtime.mapassign_faststr` | 2.44% | 5.31% | Map insert |
+| `game.(*AOIIndex).IsVisible` (inline) | 2.71% | **28.42%** | Visibility check |
+| `game.(*AOIIndex).recalculateRelationships` | 1.53% | **54.42%** | AOI recalculation |
+| `runtime.memclrNoHeapPointers` | 1.28% | 1.28% | GC zeroing |
 
-**Interpretation:** The top bottleneck is not AOI algorithm logic — it's Go map operations (lookup + insert + iteration ≈ 20%) and GC overhead (zeroing + scan ≈ 28%). The `slices.partitionOrdered` and sort calls come from `sortedCopy` in `recalculateRelationships`, which allocates and sorts string slices per call.
+**Interpretation:** After A1 allocation optimization, GC zeroing collapsed from 24.24% to 1.28%. Map operations are now the dominant category (~29% combined: `mapaccess2` + `mapaccess1` + `Iter.Next` + `mapassign`). `IsVisible` cumulatively accounts for 28.42% of CPU — it's a simple two-key map lookup, but called millions of times per tick. `recalculateRelationships` cumulatively drives 54.42% of all CPU — this single function is the bottleneck.
 
 ### 4.2 World + AOI CPU Profile
 
-Top consumers (112.61s sampling duration, 123.38s total samples):
+Top consumers (48.80s sampling duration, 48.07s total samples):
 
 | Function | Flat% | Cum% | Category |
 |---|---|---|---|
-| `runtime.memclrNoHeapPointers` | 25.04% | 25.04% | GC / zeroing |
-| `runtime.mapaccess2_faststr` | 10.93% | 14.31% | Map lookup |
-| `runtime.mapassign_faststr` | 9.06% | 31.80% | Map insert |
-| `runtime.scanObject` | 3.13% | 13.41% | GC scan |
-| `runtime.(*Iter).Next` | 2.46% | 6.59% | Map iteration |
-| `aoiworkload.(*ScheduleExpander).ExpandUpdate` | 0.95% | 11.61% | Schedule expansion |
-| `game.(*AOIIndex).distanceSquared` | 1.05% | 1.05% | Distance math |
+| `runtime.mapaccess2_faststr` | 9.53% | 26.84% | Map lookup (2-key) |
+| `runtime.(*Iter).Next` | 8.38% | 10.42% | Map iteration |
+| `runtime.mapaccess1_faststr` | 5.64% | 13.36% | Map lookup (1-key) |
+| `runtime.memequal` | 4.89% | 4.89% | String comparison |
+| `runtime.mapassign_faststr` | 2.12% | 4.16% | Map insert |
+| `game.(*AOIIndex).IsVisible` (inline) | 2.10% | **26.77%** | Visibility check |
+| `game.(*AOIIndex).recalculateRelationships` | 1.54% | **50.84%** | AOI recalculation |
+| `runtime.memclrNoHeapPointers` | 1.37% | 1.37% | GC zeroing |
 
-**Interpretation:** Map insert percentage is higher (9.06% vs 4.76%) in world_aoi because relationship churn causes more `addRelationship`/`removeRelationship` calls, triggering map rehashing. `ExpandUpdate` cumulatively reaches 11.61%, indicating the schedule expansion has meaningful overhead despite being outside timed measurement — the retained heap from expansion affects GC pressure.
+**Interpretation:** World + AOI profile mirrors core_tick nearly identically. `recalculateRelationships` cum drives half the CPU, `IsVisible` cum drives another quarter. World simulation (`World.Step`) cumulatively accounts for only 12% — confirming the bottleneck remains AOI, not movement physics.
 
 ### 4.3 Heap Profile
 
-Both modes show ~4.8-5.8MB in-use at profile capture time, dominated by profiling infrastructure (`pprof.StartCPUProfile`, `compress/gzip`). This is the heap snapshot *after* the workload has been released — peak in-use during measurement was ~150MB (core_tick workload heap) to ~240MB (world_aoi workload heap).
+Both modes show ~3.7-4.8MB in-use at profile capture time, dominated by profiling infrastructure (`pprof.StartCPUProfile`, `compress/gzip`). Post-A1, workload heap is ~107-164MB (down from ~150-240MB), reflecting reduced allocation churn during measurement. The heap delta per run dropped from ~37GB to ~14GB.
 
 ---
 
 ## 5. Optimization Candidates
 
-Evidence-backed findings from the baseline, **not yet implemented**:
+Evidence-backed findings from the baseline. Items marked ✓ were addressed by the A1 allocation optimization (Section 9).
 
-### 5.1 Map Overhead Dominance
-~20% of CPU time spent on map operations (`mapaccess`, `mapassign`, `Iter.Next`). The three-layer `map[string]map[string]struct{}` structure for `visible` relationships means every lookup traverses multiple hash tables. Converting string IDs to integer indices and using arrays or dense maps would reduce this overhead significantly.
+### 5.1 Map Overhead Dominance (remaining)
+~29% of CPU time spent on map operations (`mapaccess2` + `mapaccess1` + `Iter.Next` + `mapassign`). The three-layer `map[string]map[string]struct{}` structure for `visible` relationships means every lookup traverses multiple hash tables. `IsVisible` alone has 28.42% cumulative CPU, called millions of times per tick. Converting string IDs to integer indices and using arrays or dense maps would reduce this overhead significantly.
 
-### 5.2 Relationship Allocation
-Each `sortedCopy` call in `recalculateRelationships` allocates a new slice and sorts it. At 10k movers × 100 ticks = 1M calls, this generates substantial GC pressure. Returning unsorted results and deferring sort to the caller (who may not need it) would cut this allocation.
+### 5.2 ✓ Relationship Allocation (addressed by A1)
+~~Each `sortedCopy` call in `recalculateRelationships` allocates a new slice and sorts it.~~ Removed in A1: `nineCellCandidates` no longer allocates a temporary map or sorts keys; `sortedCopy` replaced with direct tracking via reusable buffers.
 
-### 5.3 GC Zeroing (24% of CPU)
-`memclrNoHeapPointers` at 24-25% indicates large volumes of freshly allocated memory being zeroed. This is a consequence of the per-tick allocation pattern from `nineCellCandidates` (creates a new `map[string]struct{}` every call) and per-update slice allocations. Pre-allocated reusable buffers would reduce this overhead.
+### 5.3 ✓ GC Zeroing (addressed by A1)
+~~`memclrNoHeapPointers` at 24-25% indicates large volumes of freshly allocated memory being zeroed.~~ Collapsed to 1.28% in A1 via pre-allocated reusable buffers and elimination of per-update map/slice allocations.
 
-### 5.4 Nine-Cell Candidate Explosion
-Each tick examines ~1.51M candidate pairs for 10k movers. At normal density (125m spacing, 500m enter radius), each mover's nine cells contain ~236 players on average. This is O(movers × cell_population) = 10k × 236 × 9 ≈ 21M potential candidates per tick, reduced to 1.51M by the `IsVisible` fast-path check. The cell-based broad-phase is working, but the linear scan within nine cells is the fundamental scaling limit.
+### 5.4 Nine-Cell Candidate Explosion (remaining)
+Each tick examines ~1.51M candidate pairs for 10k movers. The `IsVisible` fast-path filter eliminates most candidates before distance checks, but the nine-cell linear scan is still O(movers × cell_population). An incremental approach that only rechecks candidates near cell boundaries could reduce this volume.
 
-### 5.5 Relationship Churn is Low
-Mean churn per mover is 5.74 entered+left relationships per update, out of ~240 visible neighbors. Only ~2.4% of relationships change per tick, meaning ~97.6% of `recalculateRelationships` work re-establishes existing relationships. An incremental approach that only rechecks candidates near cell boundaries could dramatically reduce work.
+### 5.5 Relationship Churn is Low (remaining)
+Mean churn per mover is 5.74 entered+left relationships per update, out of ~240 visible neighbors. Only ~2.4% of relationships change per tick, meaning ~97.6% of `recalculateRelationships` work re-establishes existing relationships. Incremental cell-boundary recheck would exploit this directly.
 
 ---
 
