@@ -17,18 +17,18 @@ const SerialCoreBaselineKind = "Serial Core Baseline"
 type Mode string
 
 const (
-	ModeBuild     Mode = "build"
-	ModeCoreTick  Mode = "core_tick"
-	ModeWorldAOI  Mode = "world_aoi"
+	ModeBuild    Mode = "build"
+	ModeCoreTick Mode = "core_tick"
+	ModeWorldAOI Mode = "world_aoi"
 )
 
 type Phase string
 
 const (
-	PhaseGeneration     Phase = "generation"
-	PhaseBuild          Phase = "build"
-	PhaseWarmup         Phase = "warmup"
-	PhaseMeasuredTicks  Phase = "measured_ticks"
+	PhaseGeneration    Phase = "generation"
+	PhaseBuild         Phase = "build"
+	PhaseWarmup        Phase = "warmup"
+	PhaseMeasuredTicks Phase = "measured_ticks"
 )
 
 type Status string
@@ -106,35 +106,35 @@ type DurationStats struct {
 }
 
 type ThroughputStats struct {
-	Class           MetricClass `json:"class"`
-	MovesPerSecond  float64     `json:"moves_per_second"`
+	Class          MetricClass `json:"class"`
+	MovesPerSecond float64     `json:"moves_per_second"`
 }
 
 type VisibilityChurnMetric struct {
-	Class  MetricClass `json:"class"`
-	Mean   float64     `json:"mean"`
-	P50    float64     `json:"p50"`
-	P95    float64     `json:"p95"`
-	Max    int         `json:"max"`
+	Class MetricClass `json:"class"`
+	Mean  float64     `json:"mean"`
+	P50   float64     `json:"p50"`
+	P95   float64     `json:"p95"`
+	Max   int         `json:"max"`
 }
 
 type HeapSnapshot struct {
-	Class               MetricClass `json:"class"`
-	HeapAllocBytes      uint64      `json:"heap_alloc_bytes"`
-	HeapInuseBytes      uint64      `json:"heap_inuse_bytes"`
-	HeapObjects         uint64      `json:"heap_objects"`
-	TotalAllocBytes     uint64      `json:"total_alloc_bytes"`
-	DeltaHeapAllocBytes uint64      `json:"delta_heap_alloc_bytes,omitempty"`
-	DeltaTotalAllocBytes uint64     `json:"delta_total_alloc_bytes,omitempty"`
+	Class                MetricClass `json:"class"`
+	HeapAllocBytes       uint64      `json:"heap_alloc_bytes"`
+	HeapInuseBytes       uint64      `json:"heap_inuse_bytes"`
+	HeapObjects          uint64      `json:"heap_objects"`
+	TotalAllocBytes      uint64      `json:"total_alloc_bytes"`
+	DeltaHeapAllocBytes  uint64      `json:"delta_heap_alloc_bytes,omitempty"`
+	DeltaTotalAllocBytes uint64      `json:"delta_total_alloc_bytes,omitempty"`
 }
 
 type GCSnapshot struct {
-	Class               MetricClass `json:"class"`
-	NumGC               uint32      `json:"num_gc"`
-	TotalPauseNs        uint64      `json:"total_pause_ns"`
-	MaxPauseNs          uint64      `json:"max_pause_ns"`
-	DeltaNumGC          uint32      `json:"delta_num_gc,omitempty"`
-	DeltaTotalPauseNs   uint64      `json:"delta_total_pause_ns,omitempty"`
+	Class             MetricClass `json:"class"`
+	NumGC             uint32      `json:"num_gc"`
+	TotalPauseNs      uint64      `json:"total_pause_ns"`
+	MaxPauseNs        uint64      `json:"max_pause_ns"`
+	DeltaNumGC        uint32      `json:"delta_num_gc,omitempty"`
+	DeltaTotalPauseNs uint64      `json:"delta_total_pause_ns,omitempty"`
 }
 
 type RSSSnapshot struct {
@@ -153,42 +153,42 @@ type AOICounters struct {
 }
 
 type BuildCheckpoint struct {
-	PercentComplete int     `json:"percent_complete"`
-	ElapsedNs       int64   `json:"elapsed_ns"`
-	RSSBytes        *int64  `json:"rss_bytes,omitempty"`
-	RSSAvailable    bool    `json:"rss_available"`
-	RSSSource       string  `json:"rss_source,omitempty"`
+	PercentComplete int    `json:"percent_complete"`
+	ElapsedNs       int64  `json:"elapsed_ns"`
+	RSSBytes        *int64 `json:"rss_bytes,omitempty"`
+	RSSAvailable    bool   `json:"rss_available"`
+	RSSSource       string `json:"rss_source,omitempty"`
 }
 
 type Result struct {
-	Identity    ScenarioIdentity    `json:"identity"`
-	Environment EnvironmentMetadata `json:"environment"`
-	Status      Status              `json:"status"`
-	Phase       Phase               `json:"phase,omitempty"`
-	ErrorSummary string             `json:"error_summary,omitempty"`
+	Identity     ScenarioIdentity    `json:"identity"`
+	Environment  EnvironmentMetadata `json:"environment"`
+	Status       Status              `json:"status"`
+	Phase        Phase               `json:"phase,omitempty"`
+	ErrorSummary string              `json:"error_summary,omitempty"`
 
 	ElapsedNs int64 `json:"elapsed_ns,omitempty"`
 
-	TickDuration      *DurationStats       `json:"tick_duration,omitempty"`
-	SimulationDuration *DurationStats      `json:"simulation_duration,omitempty"`
-	AOIPreparationDuration *DurationStats  `json:"aoi_preparation_duration,omitempty"`
-	CombinedTickDuration *DurationStats    `json:"combined_tick_duration,omitempty"`
-	RemainingBudget     *DurationStats     `json:"remaining_budget,omitempty"`
-	BuildDurationNs   int64                `json:"build_duration_ns,omitempty"`
-	WorldSetupDurationNs int64             `json:"world_setup_duration_ns,omitempty"`
-	AOISetupDurationNs   int64             `json:"aoi_setup_duration_ns,omitempty"`
-	BuildCheckpoints  []BuildCheckpoint    `json:"build_checkpoints,omitempty"`
-	SimulationBudgetExceededCount int      `json:"simulation_budget_exceeded_count,omitempty"`
-	AOIBudgetExceededCount        int      `json:"aoi_budget_exceeded_count,omitempty"`
-	Throughput        *ThroughputStats     `json:"throughput,omitempty"`
-	VisibilityChurn   *VisibilityChurnMetric `json:"visibility_churn,omitempty"`
-	Heap              *HeapSnapshot        `json:"heap,omitempty"`
-	GC                *GCSnapshot          `json:"gc,omitempty"`
-	RSS               *RSSSnapshot         `json:"rss,omitempty"`
-	AOI               *AOICounters         `json:"aoi,omitempty"`
-	RelationshipsBefore uint64             `json:"relationships_before,omitempty"`
-	RelationshipsAfter  uint64             `json:"relationships_after,omitempty"`
-	WorkloadHeap        *HeapSnapshot      `json:"workload_heap,omitempty"`
+	TickDuration                  *DurationStats         `json:"tick_duration,omitempty"`
+	SimulationDuration            *DurationStats         `json:"simulation_duration,omitempty"`
+	AOIPreparationDuration        *DurationStats         `json:"aoi_preparation_duration,omitempty"`
+	CombinedTickDuration          *DurationStats         `json:"combined_tick_duration,omitempty"`
+	RemainingBudget               *DurationStats         `json:"remaining_budget,omitempty"`
+	BuildDurationNs               int64                  `json:"build_duration_ns,omitempty"`
+	WorldSetupDurationNs          int64                  `json:"world_setup_duration_ns,omitempty"`
+	AOISetupDurationNs            int64                  `json:"aoi_setup_duration_ns,omitempty"`
+	BuildCheckpoints              []BuildCheckpoint      `json:"build_checkpoints,omitempty"`
+	SimulationBudgetExceededCount int                    `json:"simulation_budget_exceeded_count,omitempty"`
+	AOIBudgetExceededCount        int                    `json:"aoi_budget_exceeded_count,omitempty"`
+	Throughput                    *ThroughputStats       `json:"throughput,omitempty"`
+	VisibilityChurn               *VisibilityChurnMetric `json:"visibility_churn,omitempty"`
+	Heap                          *HeapSnapshot          `json:"heap,omitempty"`
+	GC                            *GCSnapshot            `json:"gc,omitempty"`
+	RSS                           *RSSSnapshot           `json:"rss,omitempty"`
+	AOI                           *AOICounters           `json:"aoi,omitempty"`
+	RelationshipsBefore           uint64                 `json:"relationships_before,omitempty"`
+	RelationshipsAfter            uint64                 `json:"relationships_after,omitempty"`
+	WorkloadHeap                  *HeapSnapshot          `json:"workload_heap,omitempty"`
 
 	ProfileExecution          bool `json:"profile_execution,omitempty"`
 	ProfileRequiredExplicitGC bool `json:"profile_required_explicit_gc,omitempty"`

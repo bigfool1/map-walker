@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	hotspotFraction       = 0.01
-	cellLocalFraction     = 0.80
-	maxMovePerAOIUpdate   = 6.0
-	perturbationFraction  = 0.15
+	hotspotFraction      = 0.01
+	cellLocalFraction    = 0.80
+	maxMovePerAOIUpdate  = 6.0
+	perturbationFraction = 0.15
 )
 
 type localPosition struct {

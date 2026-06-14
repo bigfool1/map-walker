@@ -10,11 +10,11 @@ import (
 )
 
 type MemSnapshot struct {
-	HeapAlloc  uint64
-	HeapInuse  uint64
-	HeapObjects uint64
-	TotalAlloc uint64
-	NumGC      uint32
+	HeapAlloc    uint64
+	HeapInuse    uint64
+	HeapObjects  uint64
+	TotalAlloc   uint64
+	NumGC        uint32
 	PauseTotalNs uint64
 }
 

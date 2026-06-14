@@ -9,8 +9,8 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"map-walker/internal/benchmark/aoiworkload"
 	"map-walker/internal/benchmark/aoirunner"
+	"map-walker/internal/benchmark/aoiworkload"
 )
 
 type cliConfig struct {
@@ -227,10 +227,10 @@ func parseCLIConfig(
 
 func notApplicableResult(cfg cliConfig, env aoirunner.EnvironmentCaptureOptions) aoirunner.Result {
 	return aoirunner.Result{
-		Identity:    aoirunner.ScenarioIdentityFromConfig(cfg.mode, workloadConfigFromCLI(cfg), cfg.repeat),
-		Environment: aoirunner.CaptureEnvironment(env),
-		Status:      aoirunner.StatusNotApplicable,
-		Phase:       aoirunner.PhaseGeneration,
+		Identity:     aoirunner.ScenarioIdentityFromConfig(cfg.mode, workloadConfigFromCLI(cfg), cfg.repeat),
+		Environment:  aoirunner.CaptureEnvironment(env),
+		Status:       aoirunner.StatusNotApplicable,
+		Phase:        aoirunner.PhaseGeneration,
 		ErrorSummary: "mover count exceeds scale",
 	}
 }

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"map-walker/internal/benchmark/aoiworkload"
 	"map-walker/internal/benchmark/aoirunner"
+	"map-walker/internal/benchmark/aoiworkload"
 )
 
 type mockBenchRunner struct {
@@ -140,8 +140,8 @@ func TestMatrixAggregatesFailureWithoutMasking(t *testing.T) {
 func TestRunMatrixThreeRepeatsPerScenario(t *testing.T) {
 	config := aoiworkload.Config{Scale: 128, MoverCount: 16, Density: aoiworkload.DensityNormal, Seed: 1}
 	success := mustJSONResult(t, aoirunner.Result{
-		Identity: aoirunner.ScenarioIdentityFromConfig(aoirunner.ModeCoreTick, config, 1),
-		Status:   aoirunner.StatusSuccess,
+		Identity:     aoirunner.ScenarioIdentityFromConfig(aoirunner.ModeCoreTick, config, 1),
+		Status:       aoirunner.StatusSuccess,
 		TickDuration: &aoirunner.DurationStats{Class: aoirunner.MetricPrimary, MedianNs: 1},
 	})
 	runner := &mockBenchRunner{responses: []mockResponse{
@@ -326,8 +326,8 @@ func makeRepeatRecord(
 		result.TickDuration = &aoirunner.DurationStats{Class: aoirunner.MetricPrimary, MedianNs: medianNs}
 	}
 	return aoirunner.MatrixRepeatRecord{
-		Definition: def,
-		Result:     result,
+		Definition:  def,
+		Result:      result,
 		WallClockNs: medianNs,
 	}
 }

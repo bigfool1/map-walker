@@ -154,10 +154,10 @@ func TestWorldScheduleDrivesRealMovement(t *testing.T) {
 
 func TestInitialDensityRanges(t *testing.T) {
 	cases := []struct {
-		name     string
-		config   Config
-		minMean  float64
-		maxMean  float64
+		name    string
+		config  Config
+		minMean float64
+		maxMean float64
 	}{
 		{
 			name:    "sparse",

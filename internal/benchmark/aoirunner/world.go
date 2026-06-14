@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	WorldWarmupSimTicks    = 40
-	WorldMeasuredSimTicks  = 200
-	WorldTotalSimTicks     = WorldWarmupSimTicks + WorldMeasuredSimTicks
-	SimulationTickBudget   = 50 * time.Millisecond
-	AOIPreparationBudget   = 100 * time.Millisecond
-	CombinedTickBudget     = 100 * time.Millisecond
+	WorldWarmupSimTicks   = 40
+	WorldMeasuredSimTicks = 200
+	WorldTotalSimTicks    = WorldWarmupSimTicks + WorldMeasuredSimTicks
+	SimulationTickBudget  = 50 * time.Millisecond
+	AOIPreparationBudget  = 100 * time.Millisecond
+	CombinedTickBudget    = 100 * time.Millisecond
 )
 
 type WorldOptions struct {

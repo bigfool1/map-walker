@@ -39,12 +39,12 @@ type MatrixOptions struct {
 }
 
 type MatrixRepeatRecord struct {
-	Definition   ScenarioDefinition `json:"definition"`
-	WallClockNs  int64              `json:"wall_clock_ns"`
-	ExitCode     int                `json:"exit_code"`
-	Signal       string             `json:"signal,omitempty"`
-	StderrSummary string            `json:"stderr_summary,omitempty"`
-	Result       Result             `json:"result"`
+	Definition    ScenarioDefinition `json:"definition"`
+	WallClockNs   int64              `json:"wall_clock_ns"`
+	ExitCode      int                `json:"exit_code"`
+	Signal        string             `json:"signal,omitempty"`
+	StderrSummary string             `json:"stderr_summary,omitempty"`
+	Result        Result             `json:"result"`
 }
 
 type RepeatMinMedianMax struct {
@@ -54,19 +54,19 @@ type RepeatMinMedianMax struct {
 }
 
 type MatrixAggregateRecord struct {
-	Definition       ScenarioDefinition `json:"definition"`
-	RepeatCount      int                `json:"repeat_count"`
-	RepeatMediansNs  RepeatMinMedianMax `json:"repeat_medians_ns"`
-	RepeatPeakRSS    RepeatMinMedianMax `json:"repeat_peak_rss_bytes"`
-	RepeatStatuses   []Status           `json:"repeat_statuses"`
+	Definition      ScenarioDefinition `json:"definition"`
+	RepeatCount     int                `json:"repeat_count"`
+	RepeatMediansNs RepeatMinMedianMax `json:"repeat_medians_ns"`
+	RepeatPeakRSS   RepeatMinMedianMax `json:"repeat_peak_rss_bytes"`
+	RepeatStatuses  []Status           `json:"repeat_statuses"`
 }
 
 type MatrixReport struct {
-	GeneratedAt      time.Time              `json:"generated_at"`
-	MemoryGuardBytes int64                  `json:"memory_guard_bytes"`
-	TimeoutNs        int64                  `json:"timeout_ns"`
-	FullMatrix       bool                   `json:"full_matrix"`
-	Repeats          []MatrixRepeatRecord   `json:"repeats"`
+	GeneratedAt      time.Time               `json:"generated_at"`
+	MemoryGuardBytes int64                   `json:"memory_guard_bytes"`
+	TimeoutNs        int64                   `json:"timeout_ns"`
+	FullMatrix       bool                    `json:"full_matrix"`
+	Repeats          []MatrixRepeatRecord    `json:"repeats"`
 	Aggregates       []MatrixAggregateRecord `json:"aggregates"`
 }
 
@@ -75,12 +75,12 @@ type BenchRunner interface {
 }
 
 type BenchRunOutcome struct {
-	Stdout        []byte
-	Stderr        string
-	ExitCode      int
-	Signal        string
-	Elapsed       time.Duration
-	TerminatedBy  string
+	Stdout       []byte
+	Stderr       string
+	ExitCode     int
+	Signal       string
+	Elapsed      time.Duration
+	TerminatedBy string
 }
 
 type ExecBenchRunner struct {
@@ -335,10 +335,10 @@ func AggregateMatrixRepeats(records []MatrixRepeatRecord) []MatrixAggregateRecor
 		}
 		aggregates = append(aggregates, MatrixAggregateRecord{
 			Definition:      group[0].Definition,
-			RepeatCount:       len(group),
-			RepeatMediansNs:   repeatMinMedianMax(medians),
-			RepeatPeakRSS:     repeatMinMedianMax(peaks),
-			RepeatStatuses:    statuses,
+			RepeatCount:     len(group),
+			RepeatMediansNs: repeatMinMedianMax(medians),
+			RepeatPeakRSS:   repeatMinMedianMax(peaks),
+			RepeatStatuses:  statuses,
 		})
 	}
 	return aggregates

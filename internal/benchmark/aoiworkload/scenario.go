@@ -7,11 +7,11 @@ import (
 )
 
 const (
-	TotalAOIUpdates   = 120
-	WarmupAOIUpdates  = 20
+	TotalAOIUpdates    = 120
+	WarmupAOIUpdates   = 20
 	MeasuredAOIUpdates = 100
 
-	SimTickIntervalMs   = 50
+	SimTickIntervalMs        = 50
 	AOIUpdatesPerSimTickPair = 1
 )
 
@@ -83,9 +83,9 @@ type Scenario struct {
 
 	Schedule CompactMovementSchedule
 
-	InitialDensity    DensitySample
+	InitialDensity     DensitySample
 	SteadyStateDensity DensitySample
-	VisibilityChurn   VisibilityChurnStats
+	VisibilityChurn    VisibilityChurnStats
 }
 
 func DefaultWorldConfig() game.Config {
