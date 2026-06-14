@@ -184,3 +184,62 @@ This will produce a complete scaling curve from 100k → 500k → 1M across all 
 | Visibility churn rate | ~2.4% per tick |
 
 **Primary bottleneck:** AOI relationship recalculation in `recalculateRelationships`, driven by Go map overhead and nine-cell linear scan. World simulation cost is negligible at 100k scale.
+
+---
+
+## 9. A1 Comparison — AOI Allocation Optimization
+
+**Optimization:** Task 1 (ordering contracts) + Task 2 (remove movement-path candidate collection and sorting).  
+**Optimized commit:** `d174e9a7bff79b8a843bcf5a6106016e2289fa22` (includes `4a596ad` ordering contracts)  
+**Baseline commit:** `3af14009eb6d104496da69176fdf26a252c63e67`  
+**Measured:** 2026-06-14  
+**Environment:** Apple M5, 10 cores, 16GB RAM, macOS darwin/arm64, Go 1.26.3, seed 42
+
+### 9.1 Reproduction
+
+```sh
+go build -o /tmp/aoi-bench ./cmd/aoi-bench
+
+/tmp/aoi-bench -mode core_tick -scale 100000 -movers 10000 -density normal -seed 42 -repeat 1 \
+  > docs/benchmarks/profiles/100k-10k-normal-core-a1-repeat1.json
+/tmp/aoi-bench -mode core_tick -scale 100000 -movers 10000 -density normal -seed 42 -repeat 2 \
+  > docs/benchmarks/profiles/100k-10k-normal-core-a1-repeat2.json
+/tmp/aoi-bench -mode core_tick -scale 100000 -movers 10000 -density normal -seed 42 -repeat 3 \
+  > docs/benchmarks/profiles/100k-10k-normal-core-a1-repeat3.json
+```
+
+Result artifacts: `docs/benchmarks/profiles/100k-10k-normal-core-a1-repeat{1,2,3}.json`
+
+### 9.2 Core Tick — Before vs After (100k / 10k / normal)
+
+| Metric | Baseline (3af1400) min / median / max | Optimized (d174e9a) min / median / max | Change (median) |
+|---|---|---|---|
+| Tick median | 272.8ms / 273.7ms / 303.5ms | 101.1ms / 102.0ms / 103.0ms | **−62.7%** |
+| Tick P95 | 277.8ms / 279.0ms / 337.0ms | 102.9ms / 103.8ms / 104.7ms | **−62.8%** |
+| Moves/s | 32,419 / 36,576 / 36,729 | 96,488 / 98,174 / 98,459 | **+168%** |
+| Δ total alloc (per run) | ~36.9 GB / ~36.9 GB / ~36.9 GB | ~14.4 GB / ~14.4 GB / ~14.4 GB | **−61%** |
+| Δ GC cycles (per run) | 308 / 310 / 310 | 227 / 227 / 229 | **−27%** |
+| Δ GC pause (per run) | ~11.8ms / ~11.8ms / ~11.8ms | ~8.6ms / ~8.8ms / ~8.5ms | **−27%** |
+| Peak RSS | 612MB / 612MB / 616MB | 483MB / 491MB / 492MB | **−20%** |
+
+### 9.3 Semantic Equivalence Diagnostics
+
+| Counter | Baseline | Optimized (all 3 repeats) | Match |
+|---|---|---|---|
+| Candidate pairs | 150,832,757 | 150,832,757 | ✓ |
+| Distance checks | 202,294,335 | 202,294,335 | ✓ |
+| Relationships entered | 36,023 | 36,023 | ✓ |
+| Relationships left | 37 | 37 | ✓ |
+| Visibility churn (mean) | 5.74 | 5.74 | ✓ |
+
+All three optimized repeats completed successfully with identical AOI diagnostic totals, confirming no visibility behavior change.
+
+### 9.4 Conclusion
+
+The optimization delivers both **allocation reduction and latency improvement**:
+
+- Removing per-update `nineCellCandidates` (`seen` map + sorted key extraction), `sortedCopy`, and sorted `setKeys` traversal eliminated ~61% of measured-tick heap allocation and ~27% of GC cycles.
+- Core tick median dropped from **274ms to 102ms** (2.7× throughput), with P95 falling from **279ms to 104ms**. The 100ms AOI preparation budget is now nearly met (median +4%, P95 +4%).
+- Peak RSS declined ~20%, likely from lower allocation churn rather than structural memory savings.
+
+This A1 change addresses items 5.2 and 5.3 from Section 5. Remaining candidates (integer ID indexing, incremental boundary recheck, nine-cell population scaling) are unchanged and deferred.

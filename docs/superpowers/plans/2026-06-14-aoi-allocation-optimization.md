@@ -22,7 +22,7 @@ existing benchmark scenario is rerun after the focused hot-path change.
 
 ### Task 1: Freeze AOI And Protocol Ordering Contracts
 
-- [ ] Establish unordered AOI collection semantics while preserving stable
+- [x] Establish unordered AOI collection semantics while preserving stable
   realtime snapshot output.
 
 **Task boundary:**
@@ -63,7 +63,7 @@ existing benchmark scenario is rerun after the focused hot-path change.
 
 ### Task 2: Remove AOI Movement-Path Candidate And Sorting Allocations
 
-- [ ] Replace temporary candidate collection and repeated sorting with direct
+- [x] Replace temporary candidate collection and repeated sorting with direct
   map traversal.
 
 **Task boundary:**
@@ -114,7 +114,7 @@ existing benchmark scenario is rerun after the focused hot-path change.
 
 ### Task 3: Measure And Document The A1 Comparison
 
-- [ ] Re-run the frozen Mac Core scenario and append an evidence-based
+- [x] Re-run the frozen Mac Core scenario and append an evidence-based
   comparison to the baseline report.
 
 **Task boundary:**

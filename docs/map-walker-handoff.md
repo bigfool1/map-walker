@@ -193,6 +193,39 @@ Design and plan: `docs/superpowers/specs/2026-06-13-online-player-aoi-design.md`
 - Manual: multi-browser AOI visibility (near/far players, movement entry/exit,
   appearance, reconnect/replacement).
 
+## AOI Allocation Optimization Phase (Complete)
+
+Design and plan: `docs/superpowers/specs/2026-06-14-aoi-allocation-optimization-design.md`,
+`docs/superpowers/plans/2026-06-14-aoi-allocation-optimization.md`.
+
+### Changes
+
+- AOI movement-path collections (`Entered`, `Left`, `VisibleNeighbors`) are
+  explicitly unordered; `EncodeVisibleEntitiesSnapshot` sorts by player ID for
+  deterministic wire output.
+- `recalculateRelationships` traverses nine-cell maps directly, returns
+  discovery-order changes, and splits leave detection from removal.
+- Removed `nineCellCandidates`, `sortedCopy`, and movement-path sorting
+  allocations.
+
+### A1 benchmark (100k / 10k / normal, seed 42, Mac M5)
+
+Compared against baseline commit `3af14009` at optimized commit `d174e9a`:
+
+- Core tick median: 274ms → 102ms (−63%)
+- Δ heap allocation per run: 36.9 GB → 14.4 GB (−61%)
+- AOI diagnostic counters unchanged (candidate pairs, distance checks,
+  relationships entered/left)
+
+Full comparison: `docs/benchmarks/aoi-core-baseline.md` Section 9.  
+Artifacts: `docs/benchmarks/profiles/100k-10k-normal-core-a1-repeat{1,2,3}.json`.
+
+### Verification
+
+- `go test ./...`
+- `go vet ./...`
+- A1 core_tick benchmark (3 process-isolated repeats)
+
 ## Connection Reliability Phase
 
 - Each `realtime.Client` owns protocol-level ping/pong heartbeat and ends its
