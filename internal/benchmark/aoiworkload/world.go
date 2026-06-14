@@ -72,7 +72,7 @@ func latLngDistanceMeters(aoiConfig game.AOIConfig, latA, lngA, latB, lngB float
 
 func worldStepOnce(worldConfig game.Config, startLat, startLng float64, input game.InputState) (lat, lng float64) {
 	world := game.NewWorld(worldConfig)
-	playerID := "world-step-once"
+	playerID := int64(99999)
 	world.AddPlayerAt(playerID, startLat, startLng)
 	world.ApplyInput(playerID, input)
 	world.Step(time.Duration(SimTickIntervalMs) * time.Millisecond)
@@ -89,7 +89,7 @@ func boolNumber(value bool) float64 {
 
 func SimulateMoverWorldStep(
 	world *game.World,
-	playerID string,
+	playerID int64,
 	input game.InputState,
 ) {
 	world.ApplyInput(playerID, input)
@@ -103,7 +103,7 @@ func WorldPositionAfterInputs(
 	inputs MoverWorldInputs,
 ) (lat, lng float64, localX, localY float64) {
 	world := game.NewWorld(worldConfig)
-	playerID := "world-sim-player"
+	playerID := int64(99998)
 	world.AddPlayerAt(playerID, startLat, startLng)
 
 	SimulateMoverWorldStep(world, playerID, inputs.Tick0)

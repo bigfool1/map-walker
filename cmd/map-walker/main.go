@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"map-walker/internal/auth"
 	"map-walker/internal/game"
 	"map-walker/internal/realtime"
@@ -19,10 +21,16 @@ import (
 )
 
 func main() {
+	// .env 文件存在则加载，不存在则忽略
+	_ = godotenv.Load()
+
 	host := flag.String("host", "0.0.0.0", "监听地址")
 	port := flag.Int("port", 8080, "监听端口")
-	dbDriver := flag.String("db-driver", "sqlite", "数据库驱动 (sqlite / mysql)")
-	dbDSN := flag.String("db-dsn", storage.DefaultDBPath, "数据库 DSN (SQLite 文件路径 或 MySQL user:pass@tcp(host:port)/dbname)")
+
+	defaultDriver := envDefault("DB_DRIVER", "sqlite")
+	defaultDSN := envDefault("DB_DSN", storage.DefaultDBPath)
+	dbDriver := flag.String("db-driver", defaultDriver, "数据库驱动 (sqlite / mysql)")
+	dbDSN := flag.String("db-dsn", defaultDSN, "数据库 DSN (SQLite 文件路径 或 MySQL user:pass@tcp(host:port)/dbname)")
 	flag.Parse()
 
 	db, err := storage.Open(*dbDriver, *dbDSN)
@@ -32,7 +40,7 @@ func main() {
 
 	worker := storage.NewPersistenceWorker(db)
 	loadSavedPlayer := storage.SavedPlayerLoader(db)
-	hub := realtime.NewHubWithSavedPositions(func(userID string) (realtime.SavedPlayerLoad, bool) {
+	hub := realtime.NewHubWithSavedPositions(func(userID int64) (realtime.SavedPlayerLoad, bool) {
 		state, ok := loadSavedPlayer(userID)
 		if !ok {
 			return realtime.SavedPlayerLoad{}, false
@@ -82,4 +90,12 @@ func main() {
 		log.Printf("database close error: %v", err)
 	}
 	log.Println("shutdown complete")
+}
+
+// envDefault 返回环境变量的值，若未设置则返回 fallback。
+func envDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

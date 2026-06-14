@@ -10,4 +10,4 @@ type SavedPlayerLoad struct {
 	Appearance  game.Appearance
 }
 
-type SavedPlayerLoader func(userID string) (SavedPlayerLoad, bool)
+type SavedPlayerLoader func(userID int64) (SavedPlayerLoad, bool)

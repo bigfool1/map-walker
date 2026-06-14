@@ -16,14 +16,14 @@ const (
 )
 
 type ClientSender interface {
-	ID() string
+	ID() int64
 	Username() string
 	Send([]byte) bool
 	CloseSend()
 }
 
 type disconnectRequest struct {
-	userID string
+	userID int64
 	done   chan struct{}
 }
 
@@ -33,7 +33,7 @@ type inputEvent struct {
 }
 
 type appearanceUpdateRequest struct {
-	userID     string
+	userID     int64
 	appearance game.Appearance
 	done       chan struct{}
 }
@@ -50,12 +50,12 @@ type Hub struct {
 	stop               chan struct{}
 	done               chan struct{}
 	stopOnce           sync.Once
-	clients            map[string]ClientSender
-	persistDirty       map[string]struct{}
-	persistSeq         map[string]uint64
-	pendingEntered     map[string]game.PlayerState
-	pendingLeft        map[string][]string
-	pendingAppearances map[string]game.Appearance
+	clients            map[int64]ClientSender
+	persistDirty       map[int64]struct{}
+	persistSeq         map[int64]uint64
+	pendingEntered     map[int64]game.PlayerState
+	pendingLeft        map[int64][]int64
+	pendingAppearances map[int64]game.Appearance
 	disconnectUser     chan disconnectRequest
 	simulationTick     <-chan time.Time
 	broadcastTick      <-chan time.Time
@@ -126,12 +126,12 @@ func newHub(
 		appearanceUpdates:  make(chan appearanceUpdateRequest),
 		stop:               make(chan struct{}),
 		done:               make(chan struct{}),
-		clients:            map[string]ClientSender{},
-		persistDirty:       map[string]struct{}{},
-		persistSeq:         map[string]uint64{},
-		pendingEntered:     map[string]game.PlayerState{},
-		pendingLeft:        map[string][]string{},
-		pendingAppearances: map[string]game.Appearance{},
+		clients:            map[int64]ClientSender{},
+		persistDirty:       map[int64]struct{}{},
+		persistSeq:         map[int64]uint64{},
+		pendingEntered:     map[int64]game.PlayerState{},
+		pendingLeft:        map[int64][]int64{},
+		pendingAppearances: map[int64]game.Appearance{},
 		disconnectUser:     make(chan disconnectRequest),
 		simulationTick:     simulationTick,
 		broadcastTick:      broadcastTick,
@@ -142,10 +142,6 @@ func newHub(
 }
 
 // Run is the single owner of both connections and authoritative world state.
-//
-// Python comparison: this is one long-running asyncio task selecting between
-// queue events and timer events. World itself stays synchronous and
-// deterministic; only this orchestration layer knows about concurrency.
 func (h *Hub) Run() {
 	defer close(h.done)
 	defer h.stopTickers()
@@ -208,7 +204,7 @@ func (h *Hub) Stop() {
 	}
 }
 
-func (h *Hub) DisconnectUser(userID string) {
+func (h *Hub) DisconnectUser(userID int64) {
 	done := make(chan struct{})
 	select {
 	case h.disconnectUser <- disconnectRequest{userID: userID, done: done}:
@@ -242,7 +238,7 @@ func (h *Hub) ApplyInput(client ClientSender, input game.InputState) bool {
 	}
 }
 
-func (h *Hub) UpdateAppearance(userID string, appearance game.Appearance) bool {
+func (h *Hub) UpdateAppearance(userID int64, appearance game.Appearance) bool {
 	done := make(chan struct{})
 	select {
 	case h.appearanceUpdates <- appearanceUpdateRequest{
@@ -283,7 +279,7 @@ func (h *Hub) registerClient(client ClientSender) {
 	h.sendInitialization(client)
 }
 
-func (h *Hub) insertPlayerIntoAOI(playerID string) {
+func (h *Hub) insertPlayerIntoAOI(playerID int64) {
 	position, ok := h.world.PlayerPosition(playerID)
 	if !ok {
 		return
@@ -291,12 +287,12 @@ func (h *Hub) insertPlayerIntoAOI(playerID string) {
 	h.aoi.Insert(playerID, position.Lat, position.Lng)
 }
 
-func (h *Hub) clearPendingReplicationFor(playerID string) {
+func (h *Hub) clearPendingReplicationFor(playerID int64) {
 	delete(h.pendingAppearances, playerID)
 	delete(h.pendingLeft, playerID)
 }
 
-func (h *Hub) clearPendingLeftForPlayer(playerID string) {
+func (h *Hub) clearPendingLeftForPlayer(playerID int64) {
 	for clientID, leftIDs := range h.pendingLeft {
 		filtered := leftIDs[:0]
 		for _, id := range leftIDs {
@@ -312,11 +308,11 @@ func (h *Hub) clearPendingLeftForPlayer(playerID string) {
 	}
 }
 
-func (h *Hub) isVisibleTo(clientID, playerID string) bool {
+func (h *Hub) isVisibleTo(clientID, playerID int64) bool {
 	return h.aoi.IsVisible(clientID, playerID)
 }
 
-func (h *Hub) addPlayer(userID, username string) {
+func (h *Hub) addPlayer(userID int64, username string) {
 	if h.loadSavedPlayer != nil {
 		if state, ok := h.loadSavedPlayer(userID); ok {
 			lat, lng := state.Lat, state.Lng
@@ -397,7 +393,7 @@ func (h *Hub) persistDirtyPositions() {
 	h.persister.Submit(updates)
 }
 
-func (h *Hub) submitFinalPosition(userID string) {
+func (h *Hub) submitFinalPosition(userID int64) {
 	if h.persister == nil {
 		return
 	}
@@ -467,7 +463,7 @@ func (h *Hub) broadcastReplication() {
 	}
 
 	tick := h.world.Tick()
-	movedSet := stringSet(movedIDs)
+	movedSet := int64Set(movedIDs)
 
 	for _, client := range h.clients {
 		changes := ReplicationChanges{
@@ -527,11 +523,11 @@ func (h *Hub) broadcastReplication() {
 	}
 }
 
-func (h *Hub) snapshotVisibility() map[string]map[string]struct{} {
-	snapshot := make(map[string]map[string]struct{}, len(h.clients))
+func (h *Hub) snapshotVisibility() map[int64]map[int64]struct{} {
+	snapshot := make(map[int64]map[int64]struct{}, len(h.clients))
 	for clientID := range h.clients {
 		neighbors := h.aoi.VisibleNeighbors(clientID)
-		set := make(map[string]struct{}, len(neighbors))
+		set := make(map[int64]struct{}, len(neighbors))
 		for _, neighborID := range neighbors {
 			set[neighborID] = struct{}{}
 		}
@@ -540,7 +536,7 @@ func (h *Hub) snapshotVisibility() map[string]map[string]struct{} {
 	return snapshot
 }
 
-func (h *Hub) wasVisibleTo(visibilityBefore map[string]map[string]struct{}, clientID, playerID string) bool {
+func (h *Hub) wasVisibleTo(visibilityBefore map[int64]map[int64]struct{}, clientID, playerID int64) bool {
 	neighbors, ok := visibilityBefore[clientID]
 	if !ok {
 		return false
@@ -549,7 +545,7 @@ func (h *Hub) wasVisibleTo(visibilityBefore map[string]map[string]struct{}, clie
 	return visible
 }
 
-func (h *Hub) applyMovementAOIChanges(movedIDs []string) {
+func (h *Hub) applyMovementAOIChanges(movedIDs []int64) {
 	for _, playerID := range movedIDs {
 		position, ok := h.world.PlayerPosition(playerID)
 		if !ok {
@@ -577,13 +573,13 @@ func (h *Hub) applyMovementAOIChanges(movedIDs []string) {
 	}
 }
 
-func (h *Hub) takePendingLeft() map[string][]string {
+func (h *Hub) takePendingLeft() map[int64][]int64 {
 	if len(h.pendingLeft) == 0 {
 		return nil
 	}
-	left := make(map[string][]string, len(h.pendingLeft))
+	left := make(map[int64][]int64, len(h.pendingLeft))
 	for clientID, playerIDs := range h.pendingLeft {
-		left[clientID] = append([]string(nil), playerIDs...)
+		left[clientID] = append([]int64(nil), playerIDs...)
 	}
 	clear(h.pendingLeft)
 	return left
@@ -603,11 +599,11 @@ func (h *Hub) takePendingEntered() []game.PlayerState {
 	return states
 }
 
-func (h *Hub) takePendingAppearances() map[string]game.Appearance {
+func (h *Hub) takePendingAppearances() map[int64]game.Appearance {
 	if len(h.pendingAppearances) == 0 {
 		return nil
 	}
-	appearances := make(map[string]game.Appearance, len(h.pendingAppearances))
+	appearances := make(map[int64]game.Appearance, len(h.pendingAppearances))
 	for playerID, appearance := range h.pendingAppearances {
 		appearances[playerID] = appearance
 	}

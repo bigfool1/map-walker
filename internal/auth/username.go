@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"map-walker/internal/synthetic"
+	"map-walker/internal/storage"
 )
 
 const (
@@ -28,7 +28,7 @@ func ValidateRegistrationUsername(username string) error {
 	if err := ValidateUsername(username); err != nil {
 		return err
 	}
-	if synthetic.HasReservedPrefix(username) {
+	if strings.HasPrefix(strings.ToLower(username), storage.SyntheticUsernameNormalizedPrefix) {
 		return ErrUsernameUnavailable
 	}
 	return nil

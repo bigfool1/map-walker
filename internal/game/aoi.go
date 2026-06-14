@@ -34,8 +34,8 @@ func AOIConfigFromWorld(config Config) AOIConfig {
 }
 
 type RelationshipChanges struct {
-	Entered []string
-	Left    []string
+	Entered []int64
+	Left    []int64
 }
 
 type AOIStats struct {
@@ -53,27 +53,27 @@ type aoiPlayer struct {
 
 type AOIIndex struct {
 	config  AOIConfig
-	players map[string]*aoiPlayer
-	cells   map[CellCoord]map[string]struct{}
-	visible map[string]map[string]struct{}
+	players map[int64]*aoiPlayer
+	cells   map[CellCoord]map[int64]struct{}
+	visible map[int64]map[int64]struct{}
 	stats   AOIStats
 }
 
 func NewAOIIndex(config AOIConfig) *AOIIndex {
 	return &AOIIndex{
 		config:  config,
-		players: map[string]*aoiPlayer{},
-		cells:   map[CellCoord]map[string]struct{}{},
-		visible: map[string]map[string]struct{}{},
+		players: map[int64]*aoiPlayer{},
+		cells:   map[CellCoord]map[int64]struct{}{},
+		visible: map[int64]map[int64]struct{}{},
 	}
 }
 
-func (a *AOIIndex) HasPlayer(playerID string) bool {
+func (a *AOIIndex) HasPlayer(playerID int64) bool {
 	_, exists := a.players[playerID]
 	return exists
 }
 
-func (a *AOIIndex) Cell(playerID string) (CellCoord, bool) {
+func (a *AOIIndex) Cell(playerID int64) (CellCoord, bool) {
 	p, exists := a.players[playerID]
 	if !exists {
 		return CellCoord{}, false
@@ -81,7 +81,7 @@ func (a *AOIIndex) Cell(playerID string) (CellCoord, bool) {
 	return p.cell, true
 }
 
-func (a *AOIIndex) LocalPosition(playerID string) (localX, localY float64, ok bool) {
+func (a *AOIIndex) LocalPosition(playerID int64) (localX, localY float64, ok bool) {
 	p, exists := a.players[playerID]
 	if !exists {
 		return 0, 0, false
@@ -89,12 +89,12 @@ func (a *AOIIndex) LocalPosition(playerID string) (localX, localY float64, ok bo
 	return p.localX, p.localY, true
 }
 
-func (a *AOIIndex) VisibleNeighbors(playerID string) []string {
+func (a *AOIIndex) VisibleNeighbors(playerID int64) []int64 {
 	neighbors := a.visible[playerID]
 	if len(neighbors) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(neighbors))
+	out := make([]int64, 0, len(neighbors))
 	for neighborID := range neighbors {
 		out = append(out, neighborID)
 	}
@@ -115,7 +115,7 @@ func (a *AOIIndex) VisibleRelationshipPairs() uint64 {
 	return total / 2
 }
 
-func (a *AOIIndex) Insert(playerID string, lat, lng float64) RelationshipChanges {
+func (a *AOIIndex) Insert(playerID int64, lat, lng float64) RelationshipChanges {
 	if _, exists := a.players[playerID]; exists {
 		return RelationshipChanges{}
 	}
@@ -123,7 +123,7 @@ func (a *AOIIndex) Insert(playerID string, lat, lng float64) RelationshipChanges
 	return a.recalculateRelationships(playerID)
 }
 
-func (a *AOIIndex) Move(playerID string, lat, lng float64) RelationshipChanges {
+func (a *AOIIndex) Move(playerID int64, lat, lng float64) RelationshipChanges {
 	if _, exists := a.players[playerID]; !exists {
 		return RelationshipChanges{}
 	}
@@ -131,14 +131,14 @@ func (a *AOIIndex) Move(playerID string, lat, lng float64) RelationshipChanges {
 	return a.recalculateRelationships(playerID)
 }
 
-func (a *AOIIndex) RecalculateRelationships(playerID string) RelationshipChanges {
+func (a *AOIIndex) RecalculateRelationships(playerID int64) RelationshipChanges {
 	if _, exists := a.players[playerID]; !exists {
 		return RelationshipChanges{}
 	}
 	return a.recalculateRelationships(playerID)
 }
 
-func (a *AOIIndex) Remove(playerID string) RelationshipChanges {
+func (a *AOIIndex) Remove(playerID int64) RelationshipChanges {
 	p, exists := a.players[playerID]
 	if !exists {
 		return RelationshipChanges{}
@@ -156,7 +156,7 @@ func (a *AOIIndex) Remove(playerID string) RelationshipChanges {
 	return RelationshipChanges{Left: left}
 }
 
-func (a *AOIIndex) setPosition(playerID string, lat, lng float64) {
+func (a *AOIIndex) setPosition(playerID int64, lat, lng float64) {
 	localX, localY := a.config.latLngToLocal(lat, lng)
 	cell := a.config.localToCell(localX, localY)
 
@@ -183,14 +183,14 @@ func (a *AOIIndex) setPosition(playerID string, lat, lng float64) {
 	a.addToCell(playerID, cell)
 }
 
-func (a *AOIIndex) recalculateRelationships(playerID string) RelationshipChanges {
+func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges {
 	self, exists := a.players[playerID]
 	if !exists {
 		return RelationshipChanges{}
 	}
 
-	entered := make([]string, 0)
-	left := make([]string, 0)
+	entered := make([]int64, 0)
+	left := make([]int64, 0)
 
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
@@ -233,12 +233,12 @@ func (a *AOIIndex) recalculateRelationships(playerID string) RelationshipChanges
 	}
 }
 
-func (a *AOIIndex) IsVisible(playerA, playerB string) bool {
+func (a *AOIIndex) IsVisible(playerA, playerB int64) bool {
 	_, exists := a.visible[playerA][playerB]
 	return exists
 }
 
-func (a *AOIIndex) addRelationship(playerA, playerB string) bool {
+func (a *AOIIndex) addRelationship(playerA, playerB int64) bool {
 	if a.IsVisible(playerA, playerB) {
 		return false
 	}
@@ -247,7 +247,7 @@ func (a *AOIIndex) addRelationship(playerA, playerB string) bool {
 	return true
 }
 
-func (a *AOIIndex) removeRelationship(playerA, playerB string) bool {
+func (a *AOIIndex) removeRelationship(playerA, playerB int64) bool {
 	if !a.IsVisible(playerA, playerB) {
 		return false
 	}
@@ -262,21 +262,21 @@ func (a *AOIIndex) removeRelationship(playerA, playerB string) bool {
 	return true
 }
 
-func (a *AOIIndex) ensureVisibleSet(playerID string) map[string]struct{} {
+func (a *AOIIndex) ensureVisibleSet(playerID int64) map[int64]struct{} {
 	if a.visible[playerID] == nil {
-		a.visible[playerID] = map[string]struct{}{}
+		a.visible[playerID] = map[int64]struct{}{}
 	}
 	return a.visible[playerID]
 }
 
-func (a *AOIIndex) addToCell(playerID string, cell CellCoord) {
+func (a *AOIIndex) addToCell(playerID int64, cell CellCoord) {
 	if a.cells[cell] == nil {
-		a.cells[cell] = map[string]struct{}{}
+		a.cells[cell] = map[int64]struct{}{}
 	}
 	a.cells[cell][playerID] = struct{}{}
 }
 
-func (a *AOIIndex) removeFromCell(playerID string, cell CellCoord) {
+func (a *AOIIndex) removeFromCell(playerID int64, cell CellCoord) {
 	members, ok := a.cells[cell]
 	if !ok {
 		return

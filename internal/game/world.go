@@ -31,13 +31,13 @@ type InputState struct {
 }
 
 type PlayerPosition struct {
-	ID  string  `json:"id"`
+	ID  int64   `json:"id"`
 	Lat float64 `json:"lat"`
 	Lng float64 `json:"lng"`
 }
 
 type PlayerState struct {
-	ID         string     `json:"id"`
+	ID         int64      `json:"id"`
 	Username   string     `json:"username"`
 	Lat        float64    `json:"lat"`
 	Lng        float64    `json:"lng"`
@@ -54,18 +54,18 @@ type player struct {
 
 type World struct {
 	config           Config
-	players          map[string]*player
+	players          map[int64]*player
 	tick             uint64
-	movedPlayerIDs   map[string]struct{}
-	removedPlayerIDs map[string]struct{}
+	movedPlayerIDs   map[int64]struct{}
+	removedPlayerIDs map[int64]struct{}
 }
 
 func NewWorld(config Config) *World {
 	return &World{
 		config:           config,
-		players:          map[string]*player{},
-		movedPlayerIDs:   map[string]struct{}{},
-		removedPlayerIDs: map[string]struct{}{},
+		players:          map[int64]*player{},
+		movedPlayerIDs:   map[int64]struct{}{},
+		removedPlayerIDs: map[int64]struct{}{},
 	}
 }
 
@@ -81,19 +81,19 @@ func (w *World) SpawnLatLng() (float64, float64) {
 	return w.config.SpawnLat, w.config.SpawnLng
 }
 
-func (w *World) AddPlayer(playerID string) bool {
-	return w.AddPlayerWithState(playerID, playerID, w.config.SpawnLat, w.config.SpawnLng, DefaultAppearance())
+func (w *World) AddPlayer(playerID int64) bool {
+	return w.AddPlayerWithState(playerID, "", w.config.SpawnLat, w.config.SpawnLng, DefaultAppearance())
 }
 
-func (w *World) AddPlayerAt(playerID string, lat, lng float64) bool {
-	return w.AddPlayerWithState(playerID, playerID, lat, lng, DefaultAppearance())
+func (w *World) AddPlayerAt(playerID int64, lat, lng float64) bool {
+	return w.AddPlayerWithState(playerID, "", lat, lng, DefaultAppearance())
 }
 
-func (w *World) AddPlayerWithAppearance(playerID string, lat, lng float64, appearance Appearance) bool {
-	return w.AddPlayerWithState(playerID, playerID, lat, lng, appearance)
+func (w *World) AddPlayerWithAppearance(playerID int64, lat, lng float64, appearance Appearance) bool {
+	return w.AddPlayerWithState(playerID, "", lat, lng, appearance)
 }
 
-func (w *World) AddPlayerWithState(playerID, username string, lat, lng float64, appearance Appearance) bool {
+func (w *World) AddPlayerWithState(playerID int64, username string, lat, lng float64, appearance Appearance) bool {
 	if _, exists := w.players[playerID]; exists {
 		return false
 	}
@@ -111,12 +111,12 @@ func (w *World) AddPlayerWithState(playerID, username string, lat, lng float64, 
 	return true
 }
 
-func (w *World) HasPlayer(playerID string) bool {
+func (w *World) HasPlayer(playerID int64) bool {
 	_, exists := w.players[playerID]
 	return exists
 }
 
-func (w *World) RemovePlayer(playerID string) bool {
+func (w *World) RemovePlayer(playerID int64) bool {
 	if _, exists := w.players[playerID]; !exists {
 		return false
 	}
@@ -127,7 +127,7 @@ func (w *World) RemovePlayer(playerID string) bool {
 	return true
 }
 
-func (w *World) ResetInput(playerID string) {
+func (w *World) ResetInput(playerID int64) {
 	p, exists := w.players[playerID]
 	if !exists {
 		return
@@ -136,7 +136,7 @@ func (w *World) ResetInput(playerID string) {
 	p.lastSequence = 0
 }
 
-func (w *World) ApplyInput(playerID string, input InputState) bool {
+func (w *World) ApplyInput(playerID int64, input InputState) bool {
 	p, exists := w.players[playerID]
 	if !exists || input.Sequence <= p.lastSequence {
 		return false
@@ -147,10 +147,10 @@ func (w *World) ApplyInput(playerID string, input InputState) bool {
 	return true
 }
 
-func (w *World) Step(deltaTime time.Duration) []string {
+func (w *World) Step(deltaTime time.Duration) []int64 {
 	w.tick += 1
 	distance := w.config.SpeedMetersPerSecond * deltaTime.Seconds()
-	moved := make([]string, 0)
+	moved := make([]int64, 0)
 
 	for playerID, p := range w.players {
 		x := boolNumber(p.input.Right) - boolNumber(p.input.Left)
@@ -168,15 +168,15 @@ func (w *World) Step(deltaTime time.Duration) []string {
 		w.movedPlayerIDs[playerID] = struct{}{}
 		moved = append(moved, playerID)
 	}
-	sort.Strings(moved)
+	sort.Slice(moved, func(i, j int) bool { return moved[i] < moved[j] })
 	return moved
 }
 
-func (w *World) PlayerIDs() []string {
+func (w *World) PlayerIDs() []int64 {
 	return w.playersKeys()
 }
 
-func (w *World) PlayerState(playerID string) (PlayerState, bool) {
+func (w *World) PlayerState(playerID int64) (PlayerState, bool) {
 	p, exists := w.players[playerID]
 	if !exists {
 		return PlayerState{}, false
@@ -184,11 +184,11 @@ func (w *World) PlayerState(playerID string) (PlayerState, bool) {
 	return w.playerState(p), true
 }
 
-func (w *World) PlayerStates(playerIDs []string) []PlayerState {
+func (w *World) PlayerStates(playerIDs []int64) []PlayerState {
 	return w.statesFor(playerIDs)
 }
 
-func (w *World) PlayerPosition(playerID string) (PlayerPosition, bool) {
+func (w *World) PlayerPosition(playerID int64) (PlayerPosition, bool) {
 	p, exists := w.players[playerID]
 	if !exists {
 		return PlayerPosition{}, false
@@ -196,7 +196,7 @@ func (w *World) PlayerPosition(playerID string) (PlayerPosition, bool) {
 	return p.position, true
 }
 
-func (w *World) PlayerPositions(playerIDs []string) []PlayerPosition {
+func (w *World) PlayerPositions(playerIDs []int64) []PlayerPosition {
 	positions := make([]PlayerPosition, 0, len(playerIDs))
 	for _, id := range playerIDs {
 		if p, exists := w.players[id]; exists {
@@ -206,7 +206,7 @@ func (w *World) PlayerPositions(playerIDs []string) []PlayerPosition {
 	return positions
 }
 
-func (w *World) PlayerAppearance(playerID string) (Appearance, bool) {
+func (w *World) PlayerAppearance(playerID int64) (Appearance, bool) {
 	p, exists := w.players[playerID]
 	if !exists {
 		return Appearance{}, false
@@ -214,7 +214,7 @@ func (w *World) PlayerAppearance(playerID string) (Appearance, bool) {
 	return p.appearance, true
 }
 
-func (w *World) UpdatePlayerAppearance(playerID string, appearance Appearance) (changed bool, ok bool) {
+func (w *World) UpdatePlayerAppearance(playerID int64, appearance Appearance) (changed bool, ok bool) {
 	p, exists := w.players[playerID]
 	if !exists {
 		return false, false
@@ -226,13 +226,13 @@ func (w *World) UpdatePlayerAppearance(playerID string, appearance Appearance) (
 	return true, true
 }
 
-func (w *World) TakeMovedPlayerIDs() []string {
+func (w *World) TakeMovedPlayerIDs() []int64 {
 	ids := setKeys(w.movedPlayerIDs)
 	clear(w.movedPlayerIDs)
 	return ids
 }
 
-func (w *World) TakeRemovedPlayerIDs() []string {
+func (w *World) TakeRemovedPlayerIDs() []int64 {
 	ids := setKeys(w.removedPlayerIDs)
 	clear(w.removedPlayerIDs)
 	return ids
@@ -242,12 +242,12 @@ func (w *World) PlayerCount() int {
 	return len(w.players)
 }
 
-func (w *World) playersKeys() []string {
-	ids := make([]string, 0, len(w.players))
+func (w *World) playersKeys() []int64 {
+	ids := make([]int64, 0, len(w.players))
 	for id := range w.players {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids
 }
 
@@ -261,7 +261,7 @@ func (w *World) playerState(p *player) PlayerState {
 	}
 }
 
-func (w *World) statesFor(ids []string) []PlayerState {
+func (w *World) statesFor(ids []int64) []PlayerState {
 	states := make([]PlayerState, 0, len(ids))
 	for _, id := range ids {
 		if p, exists := w.players[id]; exists {
@@ -271,12 +271,12 @@ func (w *World) statesFor(ids []string) []PlayerState {
 	return states
 }
 
-func setKeys(values map[string]struct{}) []string {
-	keys := make([]string, 0, len(values))
+func setKeys(values map[int64]struct{}) []int64 {
+	keys := make([]int64, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	return keys
 }
 

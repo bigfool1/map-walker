@@ -77,8 +77,8 @@ func TestHubPersistenceBatchIncludesOnlyMovedPlayers(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -93,7 +93,7 @@ func TestHubPersistenceBatchIncludesOnlyMovedPlayers(t *testing.T) {
 	broadcasts <- time.Now()
 	moved := mustReceiveReplicationUpdate(t, alice)
 	bobUpdate := mustReceiveReplicationUpdate(t, bob)
-	if len(bobUpdate.Positions) != 1 || bobUpdate.Positions[0].ID != "alice" {
+	if len(bobUpdate.Positions) != 1 || bobUpdate.Positions[0].ID != 1001 {
 		t.Fatalf("expected bob to receive alice position, got %+v", bobUpdate)
 	}
 
@@ -104,7 +104,7 @@ func TestHubPersistenceBatchIncludesOnlyMovedPlayers(t *testing.T) {
 	if len(batches) != 1 {
 		t.Fatalf("expected one batch, got %d", len(batches))
 	}
-	if len(batches[0]) != 1 || batches[0][0].UserID != "alice" {
+	if len(batches[0]) != 1 || batches[0][0].UserID != 1001 {
 		t.Fatalf("expected only alice in batch, got %+v", batches[0])
 	}
 	if moved.SelfPosition == nil || batches[0][0].Lng != moved.SelfPosition.Lng {
@@ -118,7 +118,7 @@ func TestHubPersistenceSkipsUnchangedPlayers(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
@@ -137,7 +137,7 @@ func TestHubFinalSaveOnGenuineDisconnect(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
@@ -156,7 +156,7 @@ func TestHubFinalSaveOnGenuineDisconnect(t *testing.T) {
 	if len(batches) != 1 {
 		t.Fatalf("expected final save batch, got %d", len(batches))
 	}
-	if len(batches[0]) != 1 || batches[0][0].UserID != "alice" {
+	if len(batches[0]) != 1 || batches[0][0].UserID != 1001 {
 		t.Fatalf("unexpected final save: %+v", batches[0])
 	}
 	if moved.SelfPosition == nil || batches[0][0].Lng != moved.SelfPosition.Lng {
@@ -170,8 +170,8 @@ func TestHubReplacementDoesNotFinalSave(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 8)
-	replacement := NewTestClient("alice", 8)
+	old := NewTestClient(1001, 8)
+	replacement := NewTestClient(1001, 8)
 	hub.Register(old)
 	mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
@@ -198,7 +198,7 @@ func TestHubSimulationContinuesWhilePersistenceBlocks(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
@@ -231,7 +231,7 @@ func TestHubPersistenceUsesIncreasingSequence(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()

@@ -18,7 +18,7 @@ var (
 )
 
 type Client struct {
-	id        string
+	id        int64
 	username  string
 	conn      *websocket.Conn
 	hub       *Hub
@@ -27,7 +27,7 @@ type Client struct {
 	closeOnce sync.Once
 }
 
-func NewClient(id, username string, conn *websocket.Conn, hub *Hub) *Client {
+func NewClient(id int64, username string, conn *websocket.Conn, hub *Hub) *Client {
 	return &Client{
 		id:       id,
 		username: username,
@@ -37,7 +37,7 @@ func NewClient(id, username string, conn *websocket.Conn, hub *Hub) *Client {
 	}
 }
 
-func (c *Client) ID() string {
+func (c *Client) ID() int64 {
 	return c.id
 }
 

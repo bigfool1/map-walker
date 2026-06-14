@@ -52,7 +52,7 @@ const (
 )
 
 type PlayerPlacement struct {
-	ID  string
+	ID  int64
 	Lat float64
 	Lng float64
 }

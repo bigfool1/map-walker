@@ -19,8 +19,7 @@ func openTestDB(t *testing.T) *DB {
 func TestCreateUserAndLookupByNormalizedUsername(t *testing.T) {
 	db := openTestDB(t)
 
-	err := db.CreateUser(User{
-		ID:                 "user-1",
+	_, err := db.CreateUser(User{
 		Username:           "Alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
@@ -42,25 +41,22 @@ func TestCreateUserAndLookupByNormalizedUsername(t *testing.T) {
 func TestCreateUserRejectsDuplicateNormalizedUsername(t *testing.T) {
 	db := openTestDB(t)
 
-	first := User{
-		ID:                 "user-1",
+	_, err := db.CreateUser(User{
 		Username:           "Alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash-1",
 		CreatedAt:          time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create first user failed: %v", err)
 	}
-	second := User{
-		ID:                 "user-2",
+	_, err = db.CreateUser(User{
 		Username:           "ALICE",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash-2",
 		CreatedAt:          time.Now().UTC(),
-	}
-
-	if err := db.CreateUser(first); err != nil {
-		t.Fatalf("create first user failed: %v", err)
-	}
-	if err := db.CreateUser(second); err != ErrDuplicateUsername {
+	})
+	if err != ErrDuplicateUsername {
 		t.Fatalf("expected duplicate username, got %v", err)
 	}
 }
@@ -68,25 +64,25 @@ func TestCreateUserRejectsDuplicateNormalizedUsername(t *testing.T) {
 func TestSaveAndGetUserPosition(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
-	if _, _, ok, err := db.GetUserPosition("user-1"); err != nil || ok {
+	if _, _, ok, err := db.GetUserPosition(id); err != nil || ok {
 		t.Fatalf("expected no saved position, ok=%v err=%v", ok, err)
 	}
 
-	if err := db.SaveUserPosition("user-1", 31.23, 121.47); err != nil {
+	if err := db.SaveUserPosition(id, 31.23, 121.47); err != nil {
 		t.Fatalf("save position failed: %v", err)
 	}
 
-	lat, lng, ok, err := db.GetUserPosition("user-1")
+	lat, lng, ok, err := db.GetUserPosition(id)
 	if err != nil || !ok {
 		t.Fatalf("get position failed: ok=%v err=%v", ok, err)
 	}
@@ -98,24 +94,24 @@ func TestSaveAndGetUserPosition(t *testing.T) {
 func TestSavedPlayerLoader(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
-	if err := db.SaveUserAppearance("user-1", Appearance{Color: "#ff6600", Shape: "triangle"}); err != nil {
+	if err := db.SaveUserAppearance(id, Appearance{Color: "#ff6600", Shape: "triangle"}); err != nil {
 		t.Fatalf("save appearance failed: %v", err)
 	}
-	if err := db.SaveUserPosition("user-1", 31.5, 121.5); err != nil {
+	if err := db.SaveUserPosition(id, 31.5, 121.5); err != nil {
 		t.Fatalf("save position failed: %v", err)
 	}
 
 	loader := SavedPlayerLoader(db)
-	state, ok := loader("user-1")
+	state, ok := loader(id)
 	if !ok {
 		t.Fatal("expected saved player state")
 	}
@@ -129,7 +125,7 @@ func TestSavedPlayerLoader(t *testing.T) {
 		t.Fatalf("unexpected username: %q", state.Username)
 	}
 
-	if _, ok := loader("missing-user"); ok {
+	if _, ok := loader(0); ok {
 		t.Fatal("expected missing user to have no saved state")
 	}
 }
@@ -137,20 +133,20 @@ func TestSavedPlayerLoader(t *testing.T) {
 func TestSavedPlayerLoaderWithoutSavedPosition(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
-	if err := db.SaveUserAppearance("user-1", Appearance{Color: "#ff6600", Shape: "diamond"}); err != nil {
+	if err := db.SaveUserAppearance(id, Appearance{Color: "#ff6600", Shape: "diamond"}); err != nil {
 		t.Fatalf("save appearance failed: %v", err)
 	}
 
-	state, ok := SavedPlayerLoader(db)("user-1")
+	state, ok := SavedPlayerLoader(db)(id)
 	if !ok {
 		t.Fatal("expected saved player state")
 	}
@@ -165,21 +161,21 @@ func TestSavedPlayerLoaderWithoutSavedPosition(t *testing.T) {
 func TestSavedPositionLoader(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
-	if err := db.SaveUserPosition("user-1", 31.5, 121.5); err != nil {
+	if err := db.SaveUserPosition(id, 31.5, 121.5); err != nil {
 		t.Fatalf("save position failed: %v", err)
 	}
 
 	loader := SavedPositionLoader(db)
-	lat, lng, ok := loader("user-1")
+	lat, lng, ok := loader(id)
 	if !ok {
 		t.Fatal("expected saved position")
 	}
@@ -187,7 +183,7 @@ func TestSavedPositionLoader(t *testing.T) {
 		t.Fatalf("unexpected loaded position: %v %v", lat, lng)
 	}
 
-	if _, _, ok := loader("missing-user"); ok {
+	if _, _, ok := loader(0); ok {
 		t.Fatal("expected missing user to have no saved position")
 	}
 }
@@ -195,17 +191,17 @@ func TestSavedPositionLoader(t *testing.T) {
 func TestNewUserHasDefaultAppearance(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
-	user, err := db.GetUserByID("user-1")
+	user, err := db.GetUserByID(id)
 	if err != nil {
 		t.Fatalf("get user failed: %v", err)
 	}
@@ -217,22 +213,22 @@ func TestNewUserHasDefaultAppearance(t *testing.T) {
 func TestSaveAndReloadUserAppearance(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
 	custom := Appearance{Color: "#ff6600", Shape: "diamond"}
-	if err := db.SaveUserAppearance("user-1", custom); err != nil {
+	if err := db.SaveUserAppearance(id, custom); err != nil {
 		t.Fatalf("save appearance failed: %v", err)
 	}
 
-	user, err := db.GetUserByID("user-1")
+	user, err := db.GetUserByID(id)
 	if err != nil {
 		t.Fatalf("get user failed: %v", err)
 	}
@@ -244,7 +240,7 @@ func TestSaveAndReloadUserAppearance(t *testing.T) {
 func TestSaveUserAppearanceMissingUser(t *testing.T) {
 	db := openTestDB(t)
 
-	err := db.SaveUserAppearance("missing-user", Appearance{
+	err := db.SaveUserAppearance(0, Appearance{
 		Color: "#ff6600",
 		Shape: "diamond",
 	})
@@ -256,20 +252,20 @@ func TestSaveUserAppearanceMissingUser(t *testing.T) {
 func TestSessionCreateGetDelete(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := db.CreateUser(User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(User{
 		Username:           "alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
 	now := time.Now().UTC()
 	session := Session{
 		TokenHash: "token-hash",
-		UserID:    "user-1",
+		UserID:    id,
 		CreatedAt: now,
 		ExpiresAt: now.Add(30 * 24 * time.Hour),
 	}
@@ -281,7 +277,7 @@ func TestSessionCreateGetDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get session failed: %v", err)
 	}
-	if got.UserID != "user-1" {
+	if got.UserID != id {
 		t.Fatalf("unexpected session: %+v", got)
 	}
 

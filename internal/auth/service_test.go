@@ -182,20 +182,20 @@ func TestAuthenticateRejectsExpiredSession(t *testing.T) {
 	svc := NewService(db)
 	svc.now = func() time.Time { return now }
 
-	if err := db.CreateUser(storage.User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(storage.User{
 		Username:           "Alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          now,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
 	token := "session-token"
 	if err := db.CreateSession(storage.Session{
 		TokenHash: HashSessionToken(token),
-		UserID:    "user-1",
+		UserID:    id,
 		CreatedAt: now.Add(-31 * 24 * time.Hour),
 		ExpiresAt: now.Add(-time.Hour),
 	}); err != nil {

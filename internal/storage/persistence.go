@@ -14,7 +14,7 @@ type PersistenceWorker struct {
 	stop     chan struct{}
 	done     chan struct{}
 	stopOnce sync.Once
-	lastSeq  map[string]uint64
+	lastSeq  map[int64]uint64
 }
 
 func NewPersistenceWorker(db *DB) *PersistenceWorker {
@@ -26,7 +26,7 @@ func NewPersistenceWorker(db *DB) *PersistenceWorker {
 		flush:   make(chan chan struct{}),
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
-		lastSeq: map[string]uint64{},
+		lastSeq: map[int64]uint64{},
 	}
 	go w.run()
 	return w
@@ -102,7 +102,7 @@ func (w *PersistenceWorker) apply(batch []realtime.PositionUpdate) {
 			continue
 		}
 		if err := w.save(update); err != nil {
-			log.Printf("persist position user=%s: %v", update.UserID, err)
+			log.Printf("persist position user=%d: %v", update.UserID, err)
 			continue
 		}
 		w.lastSeq[update.UserID] = update.Seq

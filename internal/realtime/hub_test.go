@@ -3,6 +3,7 @@ package realtime
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"testing"
@@ -16,12 +17,12 @@ func TestHubRegisterSendsInitializationWithoutStaticReplication(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	if !hub.Register(alice) {
 		t.Fatal("register failed")
 	}
 	self, visible := mustReceiveInitialization(t, alice)
-	if self.Player.ID != "alice" || len(visible.Players) != 0 {
+	if self.Player.ID != 1001 || len(visible.Players) != 0 {
 		t.Fatalf("unexpected initialization: self=%+v visible=%+v", self, visible)
 	}
 	assertNoMessage(t, alice)
@@ -35,7 +36,7 @@ func TestHubSimulationDoesNotBroadcastUntilBroadcastTick(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 
@@ -55,7 +56,7 @@ func TestHubEmptyBroadcastTickSendsNothing(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
@@ -70,15 +71,15 @@ func TestHubDisconnectAppearsInNextReplication(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
 	mustReceiveInitialization(t, bob)
 	broadcasts <- time.Now()
 	joined := mustReceiveReplicationUpdate(t, alice)
-	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != 1002 {
 		t.Fatalf("expected bob entered for alice, got %+v", joined)
 	}
 	assertNoMessage(t, bob)
@@ -88,15 +89,15 @@ func TestHubDisconnectAppearsInNextReplication(t *testing.T) {
 	broadcasts <- time.Now()
 
 	update := mustReceiveReplicationUpdate(t, alice)
-	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != "bob" {
+	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != 1002 {
 		t.Fatalf("unexpected removals: %+v", update.LeftPlayerIDs)
 	}
 }
 
 func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 	savedAppearance := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	loader := SavedPlayerLoader(func(userID string) (SavedPlayerLoad, bool) {
-		if userID != "alice" {
+	loader := SavedPlayerLoader(func(userID int64) (SavedPlayerLoad, bool) {
+		if userID != 1001 {
 			return SavedPlayerLoad{}, false
 		}
 		return SavedPlayerLoad{
@@ -112,7 +113,7 @@ func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	self, visible := mustReceiveInitialization(t, alice)
 	if len(visible.Players) != 0 {
@@ -130,7 +131,7 @@ func TestHubRestoresOfflinePlayerAtSavedPosition(t *testing.T) {
 }
 
 func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
-	loader := SavedPlayerLoader(func(userID string) (SavedPlayerLoad, bool) {
+	loader := SavedPlayerLoader(func(userID int64) (SavedPlayerLoad, bool) {
 		return SavedPlayerLoad{
 			Lat:         31.99,
 			Lng:         121.99,
@@ -143,8 +144,8 @@ func TestHubReplacementIgnoresSavedPositionLoader(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 8)
-	replacement := NewTestClient("alice", 8)
+	old := NewTestClient(1001, 8)
+	replacement := NewTestClient(1001, 8)
 	hub.Register(old)
 	mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
@@ -172,8 +173,8 @@ func TestHubReplacementRetainsInMemoryPosition(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 8)
-	replacement := NewTestClient("alice", 8)
+	old := NewTestClient(1001, 8)
+	replacement := NewTestClient(1001, 8)
 	hub.Register(old)
 	mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
@@ -217,8 +218,8 @@ func TestHubReplacementSurvivesObsoleteUnregister(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 8)
-	replacement := NewTestClient("alice", 8)
+	old := NewTestClient(1001, 8)
+	replacement := NewTestClient(1001, 8)
 	hub.Register(old)
 	mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
@@ -247,8 +248,8 @@ func TestHubRejectsInputFromReplacedConnection(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 8)
-	replacement := NewTestClient("alice", 8)
+	old := NewTestClient(1001, 8)
+	replacement := NewTestClient(1001, 8)
 	hub.Register(old)
 	mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
@@ -283,8 +284,8 @@ func TestHubDropsSlowClient(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	slow := NewTestClient("slow", 0)
-	fast := NewTestClient("fast", 8)
+	slow := NewTestClient(1004, 0)
+	fast := NewTestClient(1005, 8)
 	hub.Register(slow)
 	hub.Register(fast)
 	mustReceiveInitialization(t, fast)
@@ -304,14 +305,14 @@ func TestHubMethodsReturnAfterStop(t *testing.T) {
 	go hub.Run()
 	hub.Stop()
 
-	client := NewTestClient("alice", 1)
+	client := NewTestClient(1001, 1)
 	if hub.Register(client) {
 		t.Fatal("register should fail after stop")
 	}
 	if hub.ApplyInput(client, game.InputState{Sequence: 1, Up: true}) {
 		t.Fatal("input should fail after stop")
 	}
-	if hub.UpdateAppearance("alice", game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}) {
+	if hub.UpdateAppearance(1001, game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}) {
 		t.Fatal("appearance update should fail after stop")
 	}
 	hub.Unregister(client)
@@ -322,8 +323,8 @@ func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -333,14 +334,14 @@ func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
 	assertNoMessage(t, bob)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	if !hub.UpdateAppearance("alice", updated) {
+	if !hub.UpdateAppearance(1001, updated) {
 		t.Fatal("appearance update failed")
 	}
 
 	broadcasts <- time.Now()
 	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
 	bobUpdate := mustReceiveReplicationUpdate(t, bob)
-	if len(aliceUpdate.Appearances) != 1 || aliceUpdate.Appearances[0].PlayerID != "alice" || aliceUpdate.Appearances[0].Appearance != updated {
+	if len(aliceUpdate.Appearances) != 1 || aliceUpdate.Appearances[0].PlayerID != 1001 || aliceUpdate.Appearances[0].Appearance != updated {
 		t.Fatalf("unexpected alice appearance replication: %+v", aliceUpdate)
 	}
 	if len(bobUpdate.Appearances) != 1 || bobUpdate.Appearances[0] != aliceUpdate.Appearances[0] {
@@ -353,18 +354,18 @@ func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
 }
 
 func TestHubUpdateAppearanceInvisibleNeighborSuppressed(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
-		"carol": {900, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
+		1003: {900, 0},
 	})
 	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
-	carol := NewTestClient("carol", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	carol := NewTestClient(1003, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -377,7 +378,7 @@ func TestHubUpdateAppearanceInvisibleNeighborSuppressed(t *testing.T) {
 	assertNoMessage(t, carol)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	if !hub.UpdateAppearance("alice", updated) {
+	if !hub.UpdateAppearance(1001, updated) {
 		t.Fatal("appearance update failed")
 	}
 
@@ -392,8 +393,8 @@ func TestHubUpdateAppearanceCollapsesToFinalValue(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -404,10 +405,10 @@ func TestHubUpdateAppearanceCollapsesToFinalValue(t *testing.T) {
 
 	first := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
 	second := game.Appearance{Color: "#00aa66", Shape: game.ShapeTriangle}
-	if !hub.UpdateAppearance("alice", first) {
+	if !hub.UpdateAppearance(1001, first) {
 		t.Fatal("first appearance update failed")
 	}
-	if !hub.UpdateAppearance("alice", second) {
+	if !hub.UpdateAppearance(1001, second) {
 		t.Fatal("second appearance update failed")
 	}
 
@@ -423,16 +424,16 @@ func TestHubUpdateAppearanceCollapsesToFinalValue(t *testing.T) {
 }
 
 func TestHubUpdateAppearanceLeftPrecedence(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
 	})
 	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -442,14 +443,14 @@ func TestHubUpdateAppearanceLeftPrecedence(t *testing.T) {
 	assertNoMessage(t, bob)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	if !hub.UpdateAppearance("alice", updated) {
+	if !hub.UpdateAppearance(1001, updated) {
 		t.Fatal("appearance update failed")
 	}
 	hub.Unregister(alice)
 
 	broadcasts <- time.Now()
 	update := mustReceiveReplicationUpdate(t, bob)
-	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != "alice" {
+	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != 1001 {
 		t.Fatalf("expected alice left, got %+v", update)
 	}
 	if len(update.Appearances) != 0 {
@@ -458,16 +459,16 @@ func TestHubUpdateAppearanceLeftPrecedence(t *testing.T) {
 }
 
 func TestHubUpdateAppearanceEnteredIncludesFinalAppearance(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
 	})
 	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 
@@ -475,13 +476,13 @@ func TestHubUpdateAppearanceEnteredIncludesFinalAppearance(t *testing.T) {
 	mustReceiveInitialization(t, bob)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	if !hub.UpdateAppearance("bob", updated) {
+	if !hub.UpdateAppearance(1002, updated) {
 		t.Fatal("appearance update failed")
 	}
 
 	broadcasts <- time.Now()
 	joined := mustReceiveReplicationUpdate(t, alice)
-	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != 1002 {
 		t.Fatalf("expected bob entered, got %+v", joined)
 	}
 	if joined.Entered[0].Appearance != updated {
@@ -497,14 +498,14 @@ func TestHubUpdateAppearanceReturnsBeforeReplicationTick(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	if !hub.UpdateAppearance("alice", updated) {
+	if !hub.UpdateAppearance(1001, updated) {
 		t.Fatal("appearance update failed")
 	}
 	assertNoMessage(t, alice)
@@ -521,13 +522,13 @@ func TestHubUpdateAppearanceUnchangedDoesNotBroadcast(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	self, _ := mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
-	if !hub.UpdateAppearance("alice", self.Player.Appearance) {
+	if !hub.UpdateAppearance(1001, self.Player.Appearance) {
 		t.Fatal("unchanged appearance update failed")
 	}
 	assertNoMessage(t, alice)
@@ -538,21 +539,21 @@ func TestHubUpdateAppearanceOfflineUserSucceedsWithoutBroadcast(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeTriangle}
-	if !hub.UpdateAppearance("offline-user", updated) {
+	if !hub.UpdateAppearance(1006, updated) {
 		t.Fatal("offline appearance update failed")
 	}
 	assertNoMessage(t, alice)
 }
 
 func TestHubReplacementRetainsInMemoryAppearance(t *testing.T) {
-	loader := SavedPlayerLoader(func(userID string) (SavedPlayerLoad, bool) {
+	loader := SavedPlayerLoader(func(userID int64) (SavedPlayerLoad, bool) {
 		return SavedPlayerLoad{
 			Lat:         31.99,
 			Lng:         121.99,
@@ -565,15 +566,15 @@ func TestHubReplacementRetainsInMemoryAppearance(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	old := NewTestClient("alice", 8)
-	replacement := NewTestClient("alice", 8)
+	old := NewTestClient(1001, 8)
+	replacement := NewTestClient(1001, 8)
 	hub.Register(old)
 	initial, _ := mustReceiveInitialization(t, old)
 	broadcasts <- time.Now()
 	assertNoMessage(t, old)
 
 	updated := game.Appearance{Color: "#ff6600", Shape: game.ShapeDiamond}
-	if !hub.UpdateAppearance("alice", updated) {
+	if !hub.UpdateAppearance(1001, updated) {
 		t.Fatal("appearance update failed")
 	}
 	broadcasts <- time.Now()
@@ -597,8 +598,8 @@ func TestHubDisconnectUserRemovesPlayer(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -607,11 +608,11 @@ func TestHubDisconnectUserRemovesPlayer(t *testing.T) {
 	mustReceiveReplicationUpdate(t, alice)
 	assertNoMessage(t, bob)
 
-	hub.DisconnectUser("alice")
+	hub.DisconnectUser(1001)
 
 	broadcasts <- time.Now()
 	update := mustReceiveReplicationUpdate(t, bob)
-	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != "alice" {
+	if len(update.LeftPlayerIDs) != 1 || update.LeftPlayerIDs[0] != 1001 {
 		t.Fatalf("expected alice removed, got %+v", update)
 	}
 
@@ -627,8 +628,8 @@ func TestHubFirstConnectionSeesOnlyNearbyPlayers(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	_, aliceVisible := mustReceiveInitialization(t, alice)
 	if len(aliceVisible.Players) != 0 {
@@ -647,20 +648,20 @@ func TestHubNearbyNeighborReceivesEnteredOnNextTick(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 
 	hub.Register(bob)
 	_, bobVisible := mustReceiveInitialization(t, bob)
-	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != "alice" {
+	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != 1001 {
 		t.Fatalf("bob should see alice in snapshot, got %+v", bobVisible.Players)
 	}
 
 	broadcasts <- time.Now()
 	joined := mustReceiveReplicationUpdate(t, alice)
-	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != 1002 {
 		t.Fatalf("expected bob entered for alice, got %+v", joined)
 	}
 	assertNoMessage(t, bob)
@@ -671,8 +672,8 @@ func TestHubDistantPlayerDoesNotReceiveNeighborReplication(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -698,13 +699,13 @@ func TestHubReplacementRetainsHysteresisVisibility(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
 	_, bobVisible := mustReceiveInitialization(t, bob)
-	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != "alice" {
+	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != 1001 {
 		t.Fatalf("bob should see alice, got %+v", bobVisible.Players)
 	}
 
@@ -717,14 +718,14 @@ func TestHubReplacementRetainsHysteresisVisibility(t *testing.T) {
 	assertNoMessage(t, alice)
 	broadcasts <- time.Now()
 	moved := mustReceiveReplicationUpdate(t, alice)
-	if len(moved.Positions) != 1 || moved.Positions[0].ID != "bob" {
+	if len(moved.Positions) != 1 || moved.Positions[0].ID != 1002 {
 		t.Fatalf("expected bob position for alice, got %+v", moved)
 	}
 
-	replacement := NewTestClient("bob", 8)
+	replacement := NewTestClient(1002, 8)
 	hub.Register(replacement)
 	_, replacementVisible := mustReceiveInitialization(t, replacement)
-	if len(replacementVisible.Players) != 1 || replacementVisible.Players[0].ID != "alice" {
+	if len(replacementVisible.Players) != 1 || replacementVisible.Players[0].ID != 1001 {
 		t.Fatalf("replacement should retain alice in hysteresis band, got %+v", replacementVisible.Players)
 	}
 
@@ -737,8 +738,8 @@ func TestHubTrueOfflineReconnectRebuildsNearbyRelationshipsOnly(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -750,20 +751,20 @@ func TestHubTrueOfflineReconnectRebuildsNearbyRelationshipsOnly(t *testing.T) {
 	hub.Unregister(bob)
 	broadcasts <- time.Now()
 	left := mustReceiveReplicationUpdate(t, alice)
-	if len(left.LeftPlayerIDs) != 1 || left.LeftPlayerIDs[0] != "bob" {
+	if len(left.LeftPlayerIDs) != 1 || left.LeftPlayerIDs[0] != 1002 {
 		t.Fatalf("expected bob left for alice, got %+v", left)
 	}
 
-	bobAgain := NewTestClient("bob", 8)
+	bobAgain := NewTestClient(1002, 8)
 	hub.Register(bobAgain)
 	_, bobVisible := mustReceiveInitialization(t, bobAgain)
-	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != "alice" {
+	if len(bobVisible.Players) != 1 || bobVisible.Players[0].ID != 1001 {
 		t.Fatalf("reconnect should rebuild nearby visibility, got %+v", bobVisible.Players)
 	}
 
 	broadcasts <- time.Now()
 	joined := mustReceiveReplicationUpdate(t, alice)
-	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != 1002 {
 		t.Fatalf("expected bob entered for alice after reconnect, got %+v", joined)
 	}
 }
@@ -773,8 +774,8 @@ func TestHubTrueOfflineReconnectSkipsDistantPlayers(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -786,7 +787,7 @@ func TestHubTrueOfflineReconnectSkipsDistantPlayers(t *testing.T) {
 	broadcasts <- time.Now()
 	assertNoMessage(t, alice)
 
-	bobAgain := NewTestClient("bob", 8)
+	bobAgain := NewTestClient(1002, 8)
 	hub.Register(bobAgain)
 	_, bobVisible := mustReceiveInitialization(t, bobAgain)
 	if len(bobVisible.Players) != 0 {
@@ -802,8 +803,8 @@ func TestHubReplacementClearsPendingLeft(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -813,7 +814,7 @@ func TestHubReplacementClearsPendingLeft(t *testing.T) {
 	assertNoMessage(t, bob)
 
 	hub.Unregister(bob)
-	replacement := NewTestClient("bob", 8)
+	replacement := NewTestClient(1002, 8)
 	hub.Register(replacement)
 	mustReceiveInitialization(t, replacement)
 
@@ -826,7 +827,7 @@ func TestHubTwoSimulationTicksOneReplication(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
+	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	broadcasts <- time.Now()
@@ -847,16 +848,16 @@ func TestHubTwoSimulationTicksOneReplication(t *testing.T) {
 }
 
 func TestHubMovementTriggersStationaryPeerEntered(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {700, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {700, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -875,7 +876,7 @@ func TestHubMovementTriggersStationaryPeerEntered(t *testing.T) {
 	broadcasts <- time.Now()
 
 	joined := mustReceiveReplicationUpdate(t, alice)
-	if len(joined.Entered) != 1 || joined.Entered[0].ID != "bob" {
+	if len(joined.Entered) != 1 || joined.Entered[0].ID != 1002 {
 		t.Fatalf("expected bob entered for alice, got %+v", joined)
 	}
 	if len(joined.Positions) != 0 {
@@ -888,16 +889,16 @@ func TestHubMovementTriggersStationaryPeerEntered(t *testing.T) {
 }
 
 func TestHubMovementExitQueuesLeft(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {400, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {400, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -914,7 +915,7 @@ func TestHubMovementExitQueuesLeft(t *testing.T) {
 	broadcasts <- time.Now()
 
 	left := mustReceiveReplicationUpdate(t, alice)
-	if len(left.LeftPlayerIDs) != 1 || left.LeftPlayerIDs[0] != "bob" {
+	if len(left.LeftPlayerIDs) != 1 || left.LeftPlayerIDs[0] != 1002 {
 		t.Fatalf("expected bob left for alice, got %+v", left)
 	}
 	if len(left.Positions) != 0 {
@@ -923,16 +924,16 @@ func TestHubMovementExitQueuesLeft(t *testing.T) {
 }
 
 func TestHubVisibleMovementSendsPositionOnly(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -947,7 +948,7 @@ func TestHubVisibleMovementSendsPositionOnly(t *testing.T) {
 	broadcasts <- time.Now()
 
 	update := mustReceiveReplicationUpdate(t, alice)
-	if len(update.Positions) != 1 || update.Positions[0].ID != "bob" {
+	if len(update.Positions) != 1 || update.Positions[0].ID != 1002 {
 		t.Fatalf("expected bob position for alice, got %+v", update)
 	}
 	if len(update.Entered) != 0 || len(update.LeftPlayerIDs) != 0 {
@@ -956,18 +957,18 @@ func TestHubVisibleMovementSendsPositionOnly(t *testing.T) {
 }
 
 func TestHubStaticDistantClientReceivesNoUpdate(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
-		"carol": {900, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
+		1003: {900, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
-	carol := NewTestClient("carol", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	carol := NewTestClient(1003, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -989,16 +990,16 @@ func TestHubStaticDistantClientReceivesNoUpdate(t *testing.T) {
 }
 
 func TestHubHysteresisMovementRetainsVisibility(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {400, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {400, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -1013,7 +1014,7 @@ func TestHubHysteresisMovementRetainsVisibility(t *testing.T) {
 	broadcasts <- time.Now()
 
 	update := mustReceiveReplicationUpdate(t, alice)
-	if len(update.Positions) != 1 || update.Positions[0].ID != "bob" {
+	if len(update.Positions) != 1 || update.Positions[0].ID != 1002 {
 		t.Fatalf("expected bob position in hysteresis band, got %+v", update)
 	}
 	if len(update.LeftPlayerIDs) != 0 {
@@ -1022,16 +1023,16 @@ func TestHubHysteresisMovementRetainsVisibility(t *testing.T) {
 }
 
 func TestHubOneMessagePerClientPerTick(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -1052,17 +1053,17 @@ func TestHubOneMessagePerClientPerTick(t *testing.T) {
 }
 
 func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
-		"slow":  {900, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
+		1004:  {900, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -1071,7 +1072,7 @@ func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
 	mustReceiveReplicationUpdate(t, alice)
 	assertNoMessage(t, bob)
 
-	slow := NewTestClient("slow", 0)
+	slow := NewTestClient(1004, 0)
 	hub.Register(slow)
 
 	select {
@@ -1086,7 +1087,7 @@ func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
 	broadcasts <- time.Now()
 
 	update := mustReceiveReplicationUpdate(t, alice)
-	if len(update.Positions) != 1 || update.Positions[0].ID != "bob" {
+	if len(update.Positions) != 1 || update.Positions[0].ID != 1002 {
 		t.Fatalf("expected bob position after slow client removal, got %+v", update)
 	}
 }
@@ -1098,16 +1099,16 @@ func TestHubLogsAOIStats(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(originalWriter) })
 
 	statsTick := make(chan time.Time, 8)
-	loader := fixedPositionsLoader(map[string][2]float64{
-		"alice": {0, 0},
-		"bob":   {100, 0},
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002:   {100, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(fastTestWorldConfig(), loader, nil, statsTick)
 	go hub.Run()
 	defer hub.Stop()
 
-	alice := NewTestClient("alice", 8)
-	bob := NewTestClient("bob", 8)
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 	hub.Register(bob)
@@ -1139,7 +1140,7 @@ func TestHubLogsAOIStats(t *testing.T) {
 		"aoi_entered=1",
 		"replication_messages=3",
 		"replication_recipients=3",
-		"replication_bytes=354",
+		"replication_bytes=353",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected stats log to contain %q, got:\n%s", want, output)
@@ -1152,7 +1153,7 @@ func TestHubDisconnectUserUnknownIDIsNoop(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	hub.DisconnectUser("nonexistent")
+	hub.DisconnectUser(9999)
 }
 
 func TestHubDisconnectUserDoesNotBlockAfterStop(t *testing.T) {
@@ -1162,7 +1163,7 @@ func TestHubDisconnectUserDoesNotBlockAfterStop(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		hub.DisconnectUser("alice")
+		hub.DisconnectUser(1001)
 		close(done)
 	}()
 	select {
@@ -1216,12 +1217,12 @@ func localLatLng(localX, localY float64) (float64, float64) {
 }
 
 func nearbyPlayerLoader() SavedPlayerLoader {
-	return func(userID string) (SavedPlayerLoad, bool) {
+	return func(userID int64) (SavedPlayerLoad, bool) {
 		switch userID {
-		case "alice":
+		case 1001:
 			lat, lng := localLatLng(0, 0)
 			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
-		case "bob":
+		case 1002:
 			lat, lng := localLatLng(100, 0)
 			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
 		}
@@ -1230,12 +1231,12 @@ func nearbyPlayerLoader() SavedPlayerLoader {
 }
 
 func distantPlayerLoader() SavedPlayerLoader {
-	return func(userID string) (SavedPlayerLoad, bool) {
+	return func(userID int64) (SavedPlayerLoad, bool) {
 		switch userID {
-		case "alice":
+		case 1001:
 			lat, lng := localLatLng(0, 0)
 			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
-		case "bob":
+		case 1002:
 			lat, lng := localLatLng(700, 0)
 			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
 		}
@@ -1244,12 +1245,12 @@ func distantPlayerLoader() SavedPlayerLoader {
 }
 
 func hysteresisPlayerLoader() SavedPlayerLoader {
-	return func(userID string) (SavedPlayerLoad, bool) {
+	return func(userID int64) (SavedPlayerLoad, bool) {
 		switch userID {
-		case "alice":
+		case 1001:
 			lat, lng := localLatLng(0, 0)
 			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
-		case "bob":
+		case 1002:
 			lat, lng := localLatLng(400, 0)
 			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
 		}
@@ -1257,15 +1258,15 @@ func hysteresisPlayerLoader() SavedPlayerLoader {
 	}
 }
 
-func fixedPositionsLoader(positions map[string][2]float64) SavedPlayerLoader {
-	return func(userID string) (SavedPlayerLoad, bool) {
+func fixedPositionsLoader(positions map[int64][2]float64) SavedPlayerLoader {
+	return func(userID int64) (SavedPlayerLoad, bool) {
 		coords, ok := positions[userID]
 		if !ok {
 			return SavedPlayerLoad{}, false
 		}
 		lat, lng := localLatLng(coords[0], coords[1])
 		return SavedPlayerLoad{
-			Username:    userID,
+			Username:    fmt.Sprintf("%d", userID),
 			Lat:         lat,
 			Lng:         lng,
 			HasPosition: true,
@@ -1274,12 +1275,12 @@ func fixedPositionsLoader(positions map[string][2]float64) SavedPlayerLoader {
 }
 
 type testClient struct {
-	id   string
+	id   int64
 	send chan []byte
 	done chan struct{}
 }
 
-func NewTestClient(id string, buffer int) *testClient {
+func NewTestClient(id int64, buffer int) *testClient {
 	return &testClient{
 		id:   id,
 		send: make(chan []byte, buffer),
@@ -1287,12 +1288,12 @@ func NewTestClient(id string, buffer int) *testClient {
 	}
 }
 
-func (c *testClient) ID() string {
+func (c *testClient) ID() int64 {
 	return c.id
 }
 
 func (c *testClient) Username() string {
-	return c.id
+	return fmt.Sprintf("%d", c.id)
 }
 
 func (c *testClient) Send(data []byte) bool {

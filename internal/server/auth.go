@@ -15,7 +15,7 @@ type credentialsRequest struct {
 }
 
 type sessionResponse struct {
-	UserID     string             `json:"userId"`
+	UserID     int64              `json:"userId"`
 	Username   string             `json:"username"`
 	Appearance appearanceResponse `json:"appearance"`
 }

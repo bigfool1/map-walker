@@ -54,14 +54,14 @@ type SelfPosition struct {
 }
 
 type PlayerAppearanceUpdate struct {
-	PlayerID   string          `json:"playerId"`
+	PlayerID   int64           `json:"playerId"`
 	Appearance game.Appearance `json:"appearance"`
 }
 
 type ReplicationChanges struct {
 	SelfPosition  *SelfPosition
 	Entered       []game.PlayerState
-	LeftPlayerIDs []string
+	LeftPlayerIDs []int64
 	Positions     []game.PlayerPosition
 	Appearances   []PlayerAppearanceUpdate
 }
@@ -71,7 +71,7 @@ type ReplicationUpdateMessage struct {
 	Tick          uint64                   `json:"tick"`
 	SelfPosition  *SelfPosition            `json:"selfPosition,omitempty"`
 	Entered       []game.PlayerState       `json:"entered,omitempty"`
-	LeftPlayerIDs []string                 `json:"leftPlayerIds,omitempty"`
+	LeftPlayerIDs []int64                  `json:"leftPlayerIds,omitempty"`
 	Positions     []game.PlayerPosition    `json:"positions,omitempty"`
 	Appearances   []PlayerAppearanceUpdate `json:"appearances,omitempty"`
 }
@@ -109,10 +109,10 @@ func (c ReplicationChanges) IsEmpty() bool {
 		len(c.Appearances) == 0
 }
 
-func NormalizeReplicationChanges(selfPlayerID string, changes ReplicationChanges) ReplicationChanges {
-	left := stringSet(changes.LeftPlayerIDs)
+func NormalizeReplicationChanges(selfPlayerID int64, changes ReplicationChanges) ReplicationChanges {
+	left := int64Set(changes.LeftPlayerIDs)
 	entered := make([]game.PlayerState, 0, len(changes.Entered))
-	enteredIDs := map[string]struct{}{}
+	enteredIDs := map[int64]struct{}{}
 
 	for _, player := range changes.Entered {
 		if player.ID == selfPlayerID || setContains(left, player.ID) {
@@ -137,7 +137,7 @@ func NormalizeReplicationChanges(selfPlayerID string, changes ReplicationChanges
 	})
 
 	appearances := make([]PlayerAppearanceUpdate, 0)
-	appearanceByPlayer := map[string]PlayerAppearanceUpdate{}
+	appearanceByPlayer := map[int64]PlayerAppearanceUpdate{}
 	for _, update := range changes.Appearances {
 		if setContains(left, update.PlayerID) || setContains(enteredIDs, update.PlayerID) {
 			continue
@@ -149,8 +149,8 @@ func NormalizeReplicationChanges(selfPlayerID string, changes ReplicationChanges
 	}
 
 	leftIDs := setKeys(left)
-	sort.Strings(leftIDs)
-	filteredLeft := make([]string, 0, len(leftIDs))
+	sort.Slice(leftIDs, func(i, j int) bool { return leftIDs[i] < leftIDs[j] })
+	filteredLeft := make([]int64, 0, len(leftIDs))
 	for _, id := range leftIDs {
 		if id != selfPlayerID {
 			filteredLeft = append(filteredLeft, id)
@@ -166,7 +166,7 @@ func NormalizeReplicationChanges(selfPlayerID string, changes ReplicationChanges
 	}
 }
 
-func EncodeReplicationUpdate(tick uint64, selfPlayerID string, changes ReplicationChanges) ([]byte, error) {
+func EncodeReplicationUpdate(tick uint64, selfPlayerID int64, changes ReplicationChanges) ([]byte, error) {
 	normalized := NormalizeReplicationChanges(selfPlayerID, changes)
 	if normalized.IsEmpty() {
 		return nil, ErrEmptyReplicationUpdate
@@ -176,13 +176,13 @@ func EncodeReplicationUpdate(tick uint64, selfPlayerID string, changes Replicati
 		Tick:          tick,
 		SelfPosition:  normalized.SelfPosition,
 		Entered:       omitEmptyPlayerStates(normalized.Entered),
-		LeftPlayerIDs: omitEmptyStrings(normalized.LeftPlayerIDs),
+		LeftPlayerIDs: omitEmptyInt64s(normalized.LeftPlayerIDs),
 		Positions:     omitEmptyPositions(normalized.Positions),
 		Appearances:   omitEmptyAppearances(normalized.Appearances),
 	})
 }
 
-func TryEncodeReplicationUpdate(tick uint64, selfPlayerID string, changes ReplicationChanges) ([]byte, bool, error) {
+func TryEncodeReplicationUpdate(tick uint64, selfPlayerID int64, changes ReplicationChanges) ([]byte, bool, error) {
 	data, err := EncodeReplicationUpdate(tick, selfPlayerID, changes)
 	if err == ErrEmptyReplicationUpdate {
 		return nil, false, nil
@@ -193,33 +193,33 @@ func TryEncodeReplicationUpdate(tick uint64, selfPlayerID string, changes Replic
 	return data, true, nil
 }
 
-func stringSet(values []string) map[string]struct{} {
-	set := make(map[string]struct{}, len(values))
+func int64Set(values []int64) map[int64]struct{} {
+	set := make(map[int64]struct{}, len(values))
 	for _, value := range values {
 		set[value] = struct{}{}
 	}
 	return set
 }
 
-func setContains(set map[string]struct{}, value string) bool {
+func setContains(set map[int64]struct{}, value int64) bool {
 	_, exists := set[value]
 	return exists
 }
 
-func setKeys(set map[string]struct{}) []string {
-	keys := make([]string, 0, len(set))
+func setKeys(set map[int64]struct{}) []int64 {
+	keys := make([]int64, 0, len(set))
 	for key := range set {
 		keys = append(keys, key)
 	}
 	return keys
 }
 
-func sortedKeys[V any](values map[string]V) []string {
-	keys := make([]string, 0, len(values))
+func sortedKeys[V any](values map[int64]V) []int64 {
+	keys := make([]int64, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	return keys
 }
 
@@ -230,7 +230,7 @@ func omitEmptyPlayerStates(values []game.PlayerState) []game.PlayerState {
 	return values
 }
 
-func omitEmptyStrings(values []string) []string {
+func omitEmptyInt64s(values []int64) []int64 {
 	if len(values) == 0 {
 		return nil
 	}

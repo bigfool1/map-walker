@@ -189,8 +189,8 @@ func gridWidthForScale(scale int) int {
 	return int(math.Ceil(math.Sqrt(float64(scale))))
 }
 
-func playerID(index int) string {
-	return fmt.Sprintf("bench-player-%09d", index)
+func playerID(index int) int64 {
+	return int64(index + 1)
 }
 
 func measureDensitySample(

@@ -11,7 +11,7 @@ import (
 const SyntheticUsernameNormalizedPrefix = "synthetic_"
 
 type SyntheticUserRecord struct {
-	UserID      string
+	UserID      int64
 	Username    string
 	HasPosition bool
 	Lat         float64
@@ -20,7 +20,7 @@ type SyntheticUserRecord struct {
 }
 
 type PrepareSyntheticUserParams struct {
-	ID           string
+	ID           int64
 	Username     string
 	PasswordHash string
 	CreatedAt    time.Time
@@ -30,7 +30,7 @@ type PrepareSyntheticUserParams struct {
 }
 
 type PrepareSyntheticUserResult struct {
-	UserID              string
+	UserID              int64
 	Created             bool
 	AppearanceCorrected bool
 	PositionInitialized bool
@@ -93,8 +93,7 @@ func (db *DB) PrepareSyntheticUser(params PrepareSyntheticUserParams) (PrepareSy
 }
 
 func (db *DB) createSyntheticUser(params PrepareSyntheticUserParams, normalized string) (PrepareSyntheticUserResult, error) {
-	err := db.CreateUser(User{
-		ID:                 params.ID,
+	id, err := db.CreateUser(User{
 		Username:           params.Username,
 		UsernameNormalized: normalized,
 		PasswordHash:       params.PasswordHash,
@@ -108,7 +107,7 @@ func (db *DB) createSyntheticUser(params PrepareSyntheticUserParams, normalized 
 	}
 
 	return PrepareSyntheticUserResult{
-		UserID:              params.ID,
+		UserID:              id,
 		Created:             true,
 		PositionInitialized: true,
 	}, nil

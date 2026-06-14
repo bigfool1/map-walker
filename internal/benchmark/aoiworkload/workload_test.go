@@ -142,7 +142,7 @@ func TestWorldScheduleDrivesRealMovement(t *testing.T) {
 			playerID := scenario.Players[playerIdx].ID
 			pos, ok := world.PlayerPosition(playerID)
 			if !ok {
-				t.Fatalf("missing player %s", playerID)
+				t.Fatalf("missing player %d", playerID)
 			}
 			target := expanded.CoreTargets[slot]
 			if !almostEqual(pos.Lat, target.Lat) || !almostEqual(pos.Lng, target.Lng) {
@@ -252,14 +252,14 @@ func TestInapplicableConfigRejected(t *testing.T) {
 
 func TestWorldStepUsesApplyInputAndStep(t *testing.T) {
 	world := game.NewWorld(DefaultWorldConfig())
-	world.AddPlayerAt("mover", DefaultWorldConfig().SpawnLat, DefaultWorldConfig().SpawnLng)
+	world.AddPlayerAt(1001, DefaultWorldConfig().SpawnLat, DefaultWorldConfig().SpawnLng)
 	input := game.InputState{Sequence: 1, Right: true}
-	if !world.ApplyInput("mover", input) {
+	if !world.ApplyInput(1001, input) {
 		t.Fatal("apply input failed")
 	}
-	before, _ := world.PlayerPosition("mover")
+	before, _ := world.PlayerPosition(1001)
 	world.Step(50 * time.Millisecond)
-	after, _ := world.PlayerPosition("mover")
+	after, _ := world.PlayerPosition(1001)
 	if after.Lng <= before.Lng {
 		t.Fatal("expected movement after Step")
 	}

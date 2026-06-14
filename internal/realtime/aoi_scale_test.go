@@ -70,7 +70,7 @@ func runThousandClientScenario(t *testing.T) thousandClientMetrics {
 	for i := 0; i < denseClusterStart; i++ {
 		clients[i] = NewTestClient(playerIDForIndex(i), 32)
 		if !hub.Register(clients[i]) {
-			t.Fatalf("register %s failed", clients[i].ID())
+			t.Fatalf("register %d failed", clients[i].ID())
 		}
 	}
 	for i := 0; i < denseClusterStart; i++ {
@@ -81,7 +81,7 @@ func runThousandClientScenario(t *testing.T) thousandClientMetrics {
 	for i := denseClusterStart; i < thousandClientCount; i++ {
 		clients[i] = NewTestClient(playerIDForIndex(i), 32)
 		if !hub.Register(clients[i]) {
-			t.Fatalf("register %s failed", clients[i].ID())
+			t.Fatalf("register %d failed", clients[i].ID())
 		}
 	}
 
@@ -169,15 +169,15 @@ func runThousandClientScenario(t *testing.T) thousandClientMetrics {
 
 func thousandPlayerLoader() SavedPlayerLoader {
 	config := testAOIConfig()
-	return func(userID string) (SavedPlayerLoad, bool) {
-		idx, ok := parsePlayerIndex(userID)
-		if !ok {
+	return func(userID int64) (SavedPlayerLoad, bool) {
+		idx := int(userID) - 1
+		if idx < 0 || idx >= thousandClientCount {
 			return SavedPlayerLoad{}, false
 		}
 		localX, localY := playerLocalPosition(idx)
 		lat, lng := config.LocalToLatLng(localX, localY)
 		return SavedPlayerLoad{
-			Username:    userID,
+			Username:    fmt.Sprintf("p%04d", idx),
 			Lat:         lat,
 			Lng:         lng,
 			HasPosition: true,
@@ -185,20 +185,10 @@ func thousandPlayerLoader() SavedPlayerLoader {
 	}
 }
 
-func playerIDForIndex(index int) string {
-	return fmt.Sprintf("p%04d", index)
+func playerIDForIndex(index int) int64 {
+	return int64(index + 1)
 }
 
-func parsePlayerIndex(userID string) (int, bool) {
-	if len(userID) < 2 || userID[0] != 'p' {
-		return 0, false
-	}
-	idx, err := strconv.Atoi(userID[1:])
-	if err != nil || idx < 0 || idx >= thousandClientCount {
-		return 0, false
-	}
-	return idx, true
-}
 
 func playerLocalPosition(index int) (float64, float64) {
 	if index >= denseClusterStart {
@@ -231,7 +221,7 @@ func assertVisibleSnapshotMatchesAOI(t *testing.T, hub *Hub, client *testClient,
 	t.Helper()
 	got := len(hub.aoi.VisibleNeighbors(client.ID()))
 	if got != wantOthers {
-		t.Fatalf("client %s visible neighbors = %d, want %d", client.ID(), got, wantOthers)
+		t.Fatalf("client %d visible neighbors = %d, want %d", client.ID(), got, wantOthers)
 	}
 }
 
@@ -240,13 +230,13 @@ func assertAOISymmetry(t *testing.T, hub *Hub) {
 	for clientID := range hub.clients {
 		for _, neighborID := range hub.aoi.VisibleNeighbors(clientID) {
 			if !hub.isVisibleTo(neighborID, clientID) {
-				t.Fatalf("asymmetric visibility: %s sees %s but not vice versa", clientID, neighborID)
+				t.Fatalf("asymmetric visibility: %d sees %d but not vice versa", clientID, neighborID)
 			}
 		}
 	}
 }
 
-func containsPlayerID(ids []string, want string) bool {
+func containsPlayerID(ids []int64, want int64) bool {
 	for _, id := range ids {
 		if id == want {
 			return true
@@ -277,7 +267,7 @@ func assertNoPendingMessages(t *testing.T, client *testClient) {
 	t.Helper()
 	select {
 	case data := <-client.send:
-		t.Fatalf("unexpected message for %s: %s", client.ID(), data)
+		t.Fatalf("unexpected message for %d: %s", client.ID(), data)
 	default:
 	}
 }

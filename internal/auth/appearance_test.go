@@ -45,7 +45,7 @@ func TestSaveAppearanceReturnsStorageError(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	svc := NewService(db)
-	err = svc.SaveAppearance("missing-user", storage.Appearance{
+	err = svc.SaveAppearance(0, storage.Appearance{
 		Color: "#ff6600",
 		Shape: "diamond",
 	})

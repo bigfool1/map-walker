@@ -41,7 +41,7 @@ func TestRegisterCreatesSession(t *testing.T) {
 	}
 
 	body := decodeSessionResponse(t, resp.Body)
-	if body.Username != "Alice" || body.UserID == "" {
+	if body.Username != "Alice" || body.UserID == 0 {
 		t.Fatalf("unexpected body: %+v", body)
 	}
 
@@ -174,20 +174,20 @@ func TestSessionLookupRejectsExpiredSession(t *testing.T) {
 	server := httptest.NewServer(srv.Routes())
 	t.Cleanup(server.Close)
 
-	if err := db.CreateUser(storage.User{
-		ID:                 "user-1",
+	id, err := db.CreateUser(storage.User{
 		Username:           "Alice",
 		UsernameNormalized: "alice",
 		PasswordHash:       "hash",
 		CreatedAt:          now.Add(-31 * 24 * time.Hour),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
 	token := "expired-token"
 	if err := db.CreateSession(storage.Session{
 		TokenHash: auth.HashSessionToken(token),
-		UserID:    "user-1",
+		UserID:    id,
 		CreatedAt: now.Add(-31 * 24 * time.Hour),
 		ExpiresAt: now.Add(-time.Hour),
 	}); err != nil {

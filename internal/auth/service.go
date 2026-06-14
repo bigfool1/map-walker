@@ -4,8 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
-
 	"map-walker/internal/storage"
 )
 
@@ -15,7 +13,7 @@ type Service struct {
 }
 
 type User struct {
-	ID         string
+	ID         int64
 	Username   string
 	Appearance storage.Appearance
 }
@@ -40,9 +38,7 @@ func (s *Service) Register(username, password string) (sessionToken string, user
 		return "", User{}, err
 	}
 
-	userID := uuid.NewString()
-	err = s.db.CreateUser(storage.User{
-		ID:                 userID,
+	userID, err := s.db.CreateUser(storage.User{
 		Username:           username,
 		UsernameNormalized: NormalizeUsername(username),
 		PasswordHash:       passwordHash,
@@ -133,7 +129,7 @@ func (s *Service) AuthenticateSession(sessionToken string) (User, error) {
 	return authUserFromRecord(record), nil
 }
 
-func (s *Service) SaveAppearance(userID string, appearance storage.Appearance) error {
+func (s *Service) SaveAppearance(userID int64, appearance storage.Appearance) error {
 	return s.db.SaveUserAppearance(userID, appearance)
 }
 
@@ -145,7 +141,7 @@ func authUserFromRecord(record storage.User) User {
 	}
 }
 
-func (s *Service) createSession(userID string) (string, error) {
+func (s *Service) createSession(userID int64) (string, error) {
 	token, err := NewSessionToken()
 	if err != nil {
 		return "", err

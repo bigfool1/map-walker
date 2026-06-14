@@ -9,18 +9,18 @@ import (
 
 func TestPersistenceWorkerSavesBatch(t *testing.T) {
 	db := openTestDB(t)
-	createTestUser(t, db, "user-1")
+	id := createTestUser(t, db)
 
 	worker := NewPersistenceWorker(db)
 	worker.Submit([]realtime.PositionUpdate{{
-		UserID: "user-1",
+		UserID: id,
 		Lat:    31.1,
 		Lng:    121.1,
 		Seq:    1,
 	}})
 	worker.Drain()
 
-	lat, lng, ok, err := db.GetUserPosition("user-1")
+	lat, lng, ok, err := db.GetUserPosition(id)
 	if err != nil || !ok {
 		t.Fatalf("get position failed: ok=%v err=%v", ok, err)
 	}
@@ -31,24 +31,24 @@ func TestPersistenceWorkerSavesBatch(t *testing.T) {
 
 func TestPersistenceWorkerRejectsStaleSequence(t *testing.T) {
 	db := openTestDB(t)
-	createTestUser(t, db, "user-1")
+	id := createTestUser(t, db)
 
 	worker := NewPersistenceWorker(db)
 	worker.Submit([]realtime.PositionUpdate{{
-		UserID: "user-1",
+		UserID: id,
 		Lat:    31.2,
 		Lng:    121.2,
 		Seq:    2,
 	}})
 	worker.Submit([]realtime.PositionUpdate{{
-		UserID: "user-1",
+		UserID: id,
 		Lat:    31.0,
 		Lng:    121.0,
 		Seq:    1,
 	}})
 	worker.Drain()
 
-	lat, lng, ok, err := db.GetUserPosition("user-1")
+	lat, lng, ok, err := db.GetUserPosition(id)
 	if err != nil || !ok {
 		t.Fatalf("get position failed: ok=%v err=%v", ok, err)
 	}
@@ -59,7 +59,7 @@ func TestPersistenceWorkerRejectsStaleSequence(t *testing.T) {
 
 func TestPersistenceWorkerDrainProcessesQueuedWork(t *testing.T) {
 	db := openTestDB(t)
-	createTestUser(t, db, "user-1")
+	id := createTestUser(t, db)
 
 	block := make(chan struct{})
 	worker := &PersistenceWorker{
@@ -71,12 +71,12 @@ func TestPersistenceWorkerDrainProcessesQueuedWork(t *testing.T) {
 		flush:   make(chan chan struct{}),
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
-		lastSeq: map[string]uint64{},
+		lastSeq: map[int64]uint64{},
 	}
 	go worker.run()
 
 	worker.ordered <- []realtime.PositionUpdate{{
-		UserID: "user-1",
+		UserID: id,
 		Lat:    31.3,
 		Lng:    121.3,
 		Seq:    1,
@@ -103,15 +103,16 @@ func TestPersistenceWorkerDrainProcessesQueuedWork(t *testing.T) {
 	}
 }
 
-func createTestUser(t *testing.T, db *DB, id string) {
+func createTestUser(t *testing.T, db *DB) int64 {
 	t.Helper()
-	if err := db.CreateUser(User{
-		ID:                 id,
-		Username:           id,
-		UsernameNormalized: id,
+	id, err := db.CreateUser(User{
+		Username:           "testuser",
+		UsernameNormalized: "testuser",
 		PasswordHash:       "hash",
 		CreatedAt:          time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
+	return id
 }

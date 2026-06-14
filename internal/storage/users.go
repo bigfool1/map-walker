@@ -11,7 +11,7 @@ import (
 )
 
 type User struct {
-	ID                 string
+	ID                 int64
 	Username           string
 	UsernameNormalized string
 	PasswordHash       string
@@ -21,12 +21,12 @@ type User struct {
 	Appearance         Appearance
 }
 
-func (db *DB) CreateUser(user User) error {
+// CreateUser 插入用户并返回数据库自动生成的 ID。
+func (db *DB) CreateUser(user User) (int64, error) {
 	appearance := appearanceOrDefault(user.Appearance)
-	_, err := db.Exec(
-		`INSERT INTO users (id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		user.ID,
+	result, err := db.Exec(
+		`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.Username,
 		user.UsernameNormalized,
 		user.PasswordHash,
@@ -37,12 +37,16 @@ func (db *DB) CreateUser(user User) error {
 		appearance.Shape,
 	)
 	if err != nil && isUniqueViolation(err) {
-		return ErrDuplicateUsername
+		return 0, ErrDuplicateUsername
 	}
 	if err != nil {
-		return fmt.Errorf("insert user: %w", err)
+		return 0, fmt.Errorf("insert user: %w", err)
 	}
-	return nil
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+	return id, nil
 }
 
 func (db *DB) GetUserByNormalizedUsername(normalized string) (User, error) {
@@ -54,7 +58,7 @@ func (db *DB) GetUserByNormalizedUsername(normalized string) (User, error) {
 	return scanUser(row)
 }
 
-func (db *DB) GetUserByID(id string) (User, error) {
+func (db *DB) GetUserByID(id int64) (User, error) {
 	row := db.QueryRow(
 		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape
 		 FROM users WHERE id = ?`,
@@ -63,7 +67,7 @@ func (db *DB) GetUserByID(id string) (User, error) {
 	return scanUser(row)
 }
 
-func (db *DB) SaveUserAppearance(userID string, appearance Appearance) error {
+func (db *DB) SaveUserAppearance(userID int64, appearance Appearance) error {
 	result, err := db.Exec(
 		`UPDATE users SET appearance_color = ?, appearance_shape = ? WHERE id = ?`,
 		appearance.Color,
@@ -83,7 +87,7 @@ func (db *DB) SaveUserAppearance(userID string, appearance Appearance) error {
 	return nil
 }
 
-func (db *DB) SaveUserPosition(userID string, lat, lng float64) error {
+func (db *DB) SaveUserPosition(userID int64, lat, lng float64) error {
 	result, err := db.Exec(
 		`UPDATE users SET last_lat = ?, last_lng = ? WHERE id = ?`,
 		lat,
@@ -103,7 +107,7 @@ func (db *DB) SaveUserPosition(userID string, lat, lng float64) error {
 	return nil
 }
 
-func (db *DB) GetUserPosition(userID string) (lat, lng float64, ok bool, err error) {
+func (db *DB) GetUserPosition(userID int64) (lat, lng float64, ok bool, err error) {
 	var lastLat, lastLng sql.NullFloat64
 	err = db.QueryRow(
 		`SELECT last_lat, last_lng FROM users WHERE id = ?`,
@@ -121,8 +125,8 @@ func (db *DB) GetUserPosition(userID string) (lat, lng float64, ok bool, err err
 	return lastLat.Float64, lastLng.Float64, true, nil
 }
 
-func SavedPositionLoader(db *DB) func(userID string) (lat, lng float64, ok bool) {
-	return func(userID string) (float64, float64, bool) {
+func SavedPositionLoader(db *DB) func(userID int64) (lat, lng float64, ok bool) {
+	return func(userID int64) (float64, float64, bool) {
 		lat, lng, ok, err := db.GetUserPosition(userID)
 		if err != nil || !ok {
 			return 0, 0, false
@@ -139,7 +143,7 @@ type SavedPlayerState struct {
 	Appearance  Appearance
 }
 
-func (db *DB) GetUserSavedState(userID string) (SavedPlayerState, error) {
+func (db *DB) GetUserSavedState(userID int64) (SavedPlayerState, error) {
 	user, err := db.GetUserByID(userID)
 	if err != nil {
 		return SavedPlayerState{}, err
@@ -157,8 +161,8 @@ func (db *DB) GetUserSavedState(userID string) (SavedPlayerState, error) {
 	return state, nil
 }
 
-func SavedPlayerLoader(db *DB) func(userID string) (SavedPlayerState, bool) {
-	return func(userID string) (SavedPlayerState, bool) {
+func SavedPlayerLoader(db *DB) func(userID int64) (SavedPlayerState, bool) {
+	return func(userID int64) (SavedPlayerState, bool) {
 		state, err := db.GetUserSavedState(userID)
 		if err != nil {
 			return SavedPlayerState{}, false

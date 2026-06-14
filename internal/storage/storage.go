@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "modernc.org/sqlite"
@@ -28,6 +29,14 @@ func Open(driver, dsn string) (*DB, error) {
 			return nil, fmt.Errorf("create database directory: %w", err)
 		}
 	}
+	// MySQL 允许多语句执行（迁移 SQL 文件包含多条语句）
+	if driver == "mysql" && !strings.Contains(dsn, "multiStatements") {
+		if strings.Contains(dsn, "?") {
+			dsn += "&multiStatements=true"
+		} else {
+			dsn += "?multiStatements=true"
+		}
+	}
 
 	sqlDB, err := sql.Open(driver, dsn)
 	if err != nil {
@@ -39,7 +48,7 @@ func Open(driver, dsn string) (*DB, error) {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-	if err := migrate(sqlDB); err != nil {
+	if err := migrate(sqlDB, driver); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate database: %w", err)
 	}

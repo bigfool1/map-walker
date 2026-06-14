@@ -144,7 +144,7 @@ func TestPutAppearanceOnlineUserBroadcastsReplicationAppearance(t *testing.T) {
 	var message struct {
 		Type        string `json:"type"`
 		Appearances []struct {
-			PlayerID   string             `json:"playerId"`
+			PlayerID   int64              `json:"playerId"`
 			Appearance appearanceResponse `json:"appearance"`
 		} `json:"appearances"`
 	}

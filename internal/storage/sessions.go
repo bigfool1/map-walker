@@ -8,7 +8,7 @@ import (
 
 type Session struct {
 	TokenHash string
-	UserID    string
+	UserID    int64
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }

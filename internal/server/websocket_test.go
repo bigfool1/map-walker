@@ -59,13 +59,13 @@ func TestWebSocketAcceptsAuthenticatedSession(t *testing.T) {
 	var message struct {
 		Type   string `json:"type"`
 		Player struct {
-			ID string `json:"id"`
+			ID int64 `json:"id"`
 		} `json:"player"`
 	}
 	if err := json.Unmarshal(data, &message); err != nil {
 		t.Fatalf("decode self state failed: %v", err)
 	}
-	if message.Type != "self_state" || message.Player.ID == "" {
+	if message.Type != "self_state" || message.Player.ID == 0 {
 		t.Fatalf("unexpected self state: %s", data)
 	}
 }
@@ -79,7 +79,7 @@ func TestWebSocketIgnoresClientSuppliedPlayerID(t *testing.T) {
 
 	session := getSession(t, server.URL, cookie)
 
-	wsURL := websocketURL(server.URL) + "?playerId=attacker-id"
+	wsURL := websocketURL(server.URL) + "?playerId=99999"
 	conn, _, err := dialWebSocketURL(wsURL, cookie)
 	if err != nil {
 		t.Fatalf("dial failed: %v", err)
@@ -96,17 +96,14 @@ func TestWebSocketIgnoresClientSuppliedPlayerID(t *testing.T) {
 	var message struct {
 		Type   string `json:"type"`
 		Player struct {
-			ID string `json:"id"`
+			ID int64 `json:"id"`
 		} `json:"player"`
 	}
 	if err := json.Unmarshal(data, &message); err != nil {
 		t.Fatalf("decode self state failed: %v", err)
 	}
 	if message.Type != "self_state" || message.Player.ID != session.UserID {
-		t.Fatalf("expected authenticated user id %q, got %+v", session.UserID, message)
-	}
-	if message.Player.ID == "attacker-id" {
-		t.Fatal("client-supplied playerId must not be used")
+		t.Fatalf("expected authenticated user id %d, got %+v", session.UserID, message)
 	}
 }
 

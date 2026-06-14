@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed migrations/*.sql
@@ -20,14 +21,14 @@ type migration struct {
 	sql     string
 }
 
-func migrate(db *sql.DB) error {
+func migrate(db *sql.DB, driver string) error {
 	if err := ensureSchemaMigrationsTable(db); err != nil {
 		return err
 	}
-	return applyMigrations(db, embeddedMigrations, "migrations")
+	return applyMigrations(db, driver, embeddedMigrations, "migrations")
 }
 
-func applyMigrations(db *sql.DB, migrationsFS fs.FS, root string) error {
+func applyMigrations(db *sql.DB, driver string, migrationsFS fs.FS, root string) error {
 	if err := ensureSchemaMigrationsTable(db); err != nil {
 		return err
 	}
@@ -42,11 +43,13 @@ func applyMigrations(db *sql.DB, migrationsFS fs.FS, root string) error {
 		return err
 	}
 
+	autoPK := autoPKKeyword(driver)
 	for _, migration := range pending {
 		if applied[migration.version] {
 			continue
 		}
-		if err := applyMigration(db, migration); err != nil {
+		sqlText := strings.ReplaceAll(migration.sql, "__PK_AUTO__", autoPK)
+		if err := applyMigration(db, migration.version, migration.name, sqlText); err != nil {
 			return fmt.Errorf("apply migration %03d_%s: %w", migration.version, migration.name, err)
 		}
 	}
@@ -54,10 +57,18 @@ func applyMigrations(db *sql.DB, migrationsFS fs.FS, root string) error {
 	return nil
 }
 
+func autoPKKeyword(driver string) string {
+	if driver == "mysql" {
+		return "BIGINT PRIMARY KEY AUTO_INCREMENT"
+	}
+	// SQLite: INTEGER PRIMARY KEY 自动成为 rowid alias，插入 NULL 时自增
+	return "INTEGER PRIMARY KEY"
+}
+
 func ensureSchemaMigrationsTable(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version INTEGER PRIMARY KEY NOT NULL,
-		applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+		applied_at TEXT NOT NULL
 	)`)
 	if err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
@@ -138,18 +149,22 @@ func appliedVersions(db *sql.DB) (map[int]bool, error) {
 	return applied, nil
 }
 
-func applyMigration(db *sql.DB, migration migration) error {
+func applyMigration(db *sql.DB, version int, name, sqlText string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 
-	if _, err := tx.Exec(migration.sql); err != nil {
+	if _, err := tx.Exec(sqlText); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("exec migration sql: %w", err)
 	}
 
-	if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, migration.version); err != nil {
+	if _, err := tx.Exec(
+		`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+		version,
+		time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("record migration version: %w", err)
 	}
