@@ -28,7 +28,7 @@ func NewService(db *storage.DB) *Service {
 }
 
 func (s *Service) Register(username, password string) (sessionToken string, user User, err error) {
-	if err := ValidateUsername(username); err != nil {
+	if err := ValidateRegistrationUsername(username); err != nil {
 		return "", User{}, err
 	}
 	if err := ValidatePassword(password); err != nil {

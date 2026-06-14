@@ -32,6 +32,34 @@ func TestValidateUsername(t *testing.T) {
 	if err := ValidateUsername("abc"); err != nil {
 		t.Fatalf("expected valid username, got %v", err)
 	}
+	if err := ValidateUsername("synthetic_1"); err != nil {
+		t.Fatalf("expected valid username for login path, got %v", err)
+	}
+}
+
+func TestValidateRegistrationUsernameRejectsSyntheticPrefix(t *testing.T) {
+	reserved := []string{"synthetic_1", "Synthetic_2", "SYNTHETIC_foo"}
+	for _, username := range reserved {
+		if err := ValidateRegistrationUsername(username); err != ErrUsernameUnavailable {
+			t.Fatalf("ValidateRegistrationUsername(%q) = %v, want ErrUsernameUnavailable", username, err)
+		}
+	}
+
+	allowed := []string{"alice", "synthetic", "notsynthetic_1", "my_synthetic_1"}
+	for _, username := range allowed {
+		if err := ValidateRegistrationUsername(username); err != nil {
+			t.Fatalf("ValidateRegistrationUsername(%q) = %v, want nil", username, err)
+		}
+	}
+}
+
+func TestRegisterRejectsSyntheticPrefix(t *testing.T) {
+	svc := openTestService(t)
+
+	_, _, err := svc.Register("Synthetic_1", "password123")
+	if err != ErrUsernameUnavailable {
+		t.Fatalf("expected reserved synthetic username rejection, got %v", err)
+	}
 }
 
 func TestValidatePassword(t *testing.T) {
