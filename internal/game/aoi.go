@@ -2,7 +2,6 @@ package game
 
 import (
 	"math"
-	"sort"
 )
 
 const (
@@ -91,8 +90,15 @@ func (a *AOIIndex) LocalPosition(playerID string) (localX, localY float64, ok bo
 }
 
 func (a *AOIIndex) VisibleNeighbors(playerID string) []string {
-	neighbors := setKeys(a.visible[playerID])
-	return neighbors
+	neighbors := a.visible[playerID]
+	if len(neighbors) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(neighbors))
+	for neighborID := range neighbors {
+		out = append(out, neighborID)
+	}
+	return out
 }
 
 func (a *AOIIndex) TakeStats() AOIStats {
@@ -186,51 +192,45 @@ func (a *AOIIndex) recalculateRelationships(playerID string) RelationshipChanges
 	entered := make([]string, 0)
 	left := make([]string, 0)
 
-	for _, candidateID := range a.nineCellCandidates(self.cell) {
-		if candidateID == playerID || a.IsVisible(playerID, candidateID) {
-			continue
-		}
-		a.stats.CandidatePairs++
-		candidate := a.players[candidateID]
-		a.stats.DistanceChecks++
-		if a.withinEnterRadius(self, candidate) {
-			if a.addRelationship(playerID, candidateID) {
-				entered = append(entered, candidateID)
-				a.stats.RelationshipsEntered++
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			for candidateID := range a.cells[CellCoord{X: self.cell.X + dx, Y: self.cell.Y + dy}] {
+				if candidateID == playerID || a.IsVisible(playerID, candidateID) {
+					continue
+				}
+				a.stats.CandidatePairs++
+				candidate := a.players[candidateID]
+				a.stats.DistanceChecks++
+				if a.withinEnterRadius(self, candidate) {
+					if a.addRelationship(playerID, candidateID) {
+						entered = append(entered, candidateID)
+						a.stats.RelationshipsEntered++
+					}
+				}
 			}
 		}
 	}
 
-	for _, neighborID := range setKeys(a.visible[playerID]) {
+	for neighborID := range a.visible[playerID] {
 		neighbor := a.players[neighborID]
 		if neighbor == nil {
 			continue
 		}
 		a.stats.DistanceChecks++
 		if a.beyondLeaveRadius(self, neighbor) {
-			if a.removeRelationship(playerID, neighborID) {
-				left = append(left, neighborID)
-				a.stats.RelationshipsLeft++
-			}
+			left = append(left, neighborID)
+		}
+	}
+	for _, neighborID := range left {
+		if a.removeRelationship(playerID, neighborID) {
+			a.stats.RelationshipsLeft++
 		}
 	}
 
 	return RelationshipChanges{
-		Entered: sortedCopy(entered),
-		Left:    sortedCopy(left),
+		Entered: entered,
+		Left:    left,
 	}
-}
-
-func (a *AOIIndex) nineCellCandidates(cell CellCoord) []string {
-	seen := map[string]struct{}{}
-	for dx := -1; dx <= 1; dx++ {
-		for dy := -1; dy <= 1; dy++ {
-			for id := range a.cells[CellCoord{X: cell.X + dx, Y: cell.Y + dy}] {
-				seen[id] = struct{}{}
-			}
-		}
-	}
-	return setKeys(seen)
 }
 
 func (a *AOIIndex) IsVisible(playerA, playerB string) bool {
@@ -326,13 +326,4 @@ func (c AOIConfig) enterRadiusSquared() float64 {
 
 func (c AOIConfig) leaveRadiusSquared() float64 {
 	return c.LeaveRadiusMeters * c.LeaveRadiusMeters
-}
-
-func sortedCopy(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := append([]string(nil), values...)
-	sort.Strings(out)
-	return out
 }
