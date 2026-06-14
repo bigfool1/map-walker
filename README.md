@@ -73,25 +73,25 @@ Client → Server:
 Server → Newly Connected Client (in order):
 
 ```json
-{"type":"self_state","tick":1280,"player":{"id":"UUID","username":"alice","lat":31.23,"lng":121.47,"appearance":{"color":"#3388ff","shape":"circle"}}}
+{"type":"self_state","tick":1280,"player":{"id":1,"username":"alice","lat":31.23,"lng":121.47,"appearance":{"color":"#3388ff","shape":"circle"}}}
 ```
 ```json
-{"type":"visible_entities_snapshot","tick":1280,"players":[{"id":"UUID","username":"bob","lat":31.24,"lng":121.48,"appearance":{"color":"#ff6600","shape":"diamond"}}]}
+{"type":"visible_entities_snapshot","tick":1280,"players":[{"id":2,"username":"bob","lat":31.24,"lng":121.48,"appearance":{"color":"#ff6600","shape":"diamond"}}]}
 ```
 
 Server → Existing Clients (10 Hz, per-client):
 
 ```json
-{"type":"replication_update","tick":1282,"positions":[{"id":"UUID","lat":31.24,"lng":121.48}],"entered":[{"id":"UUID","username":"carol","lat":31.25,"lng":121.49,"appearance":{...}}],"leftPlayerIds":["UUID"],"appearances":[{"playerId":"UUID","appearance":{...}}]}
+{"type":"replication_update","tick":1282,"positions":[{"id":2,"lat":31.24,"lng":121.48}],"entered":[{"id":3,"username":"carol","lat":31.25,"lng":121.49,"appearance":{...}}],"leftPlayerIds":[4],"appearances":[{"playerId":2,"appearance":{...}}]}
 ```
 
 Server → All Clients (on appearance change):
 
 ```json
-{"type":"appearance_changed","playerId":"UUID","appearance":{"color":"#ff6600","shape":"diamond"}}
+{"type":"appearance_changed","playerId":2,"appearance":{"color":"#ff6600","shape":"diamond"}}
 ```
 
-Player IDs are authenticated user UUIDs — the server ignores client-supplied
+Player IDs are BIGINT database user IDs — the server ignores client-supplied
 player IDs.
 
 ## HTTP API

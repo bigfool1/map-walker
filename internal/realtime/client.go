@@ -10,7 +10,7 @@ import (
 	"github.com/coder/websocket"
 )
 
-const sendBufferSize = 16
+const DefaultSendBufferSize = 16
 
 var (
 	pingInterval = 15 * time.Second
@@ -33,7 +33,7 @@ func NewClient(id int64, username string, conn *websocket.Conn, hub *Hub) *Clien
 		username: username,
 		conn:     conn,
 		hub:      hub,
-		send:     make(chan []byte, sendBufferSize),
+		send:     make(chan []byte, DefaultSendBufferSize),
 	}
 }
 

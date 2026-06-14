@@ -28,6 +28,12 @@ func setHeartbeatTiming(interval, timeout time.Duration) func() {
 	}
 }
 
+func TestDefaultSendBufferSize(t *testing.T) {
+	if DefaultSendBufferSize != 16 {
+		t.Fatalf("DefaultSendBufferSize = %d, want 16", DefaultSendBufferSize)
+	}
+}
+
 func TestClientDisconnectsUnresponsivePeer(t *testing.T) {
 	withFastHeartbeat(t)
 
