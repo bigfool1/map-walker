@@ -45,12 +45,12 @@ func TestEncodeSelfState(t *testing.T) {
 		Lat:        31.2304,
 		Lng:        121.4737,
 		Appearance: game.Appearance{Color: "#3388ff", Shape: game.ShapeCircle},
-	})
+	}, 42)
 	if err != nil {
 		t.Fatalf("encode failed: %v", err)
 	}
 
-	want := `{"type":"self_state","tick":42,"player":{"id":1001,"username":"Alice","lat":31.2304,"lng":121.4737,"appearance":{"color":"#3388ff","shape":"circle"}}}`
+	want := `{"type":"self_state","tick":42,"player":{"id":1001,"username":"Alice","lat":31.2304,"lng":121.4737,"appearance":{"color":"#3388ff","shape":"circle"}},"score":42}`
 	if string(data) != want {
 		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
 	}
@@ -218,6 +218,174 @@ func TestNormalizeReplicationCollapsesRepeatedAppearancesToFinalValue(t *testing
 	})
 	if len(normalized.Appearances) != 1 || normalized.Appearances[0].Appearance.Color != "#ff6600" {
 		t.Fatalf("expected final appearance, got %+v", normalized.Appearances)
+	}
+}
+
+func TestDecodeCollectMessage(t *testing.T) {
+	raw := []byte(`{"type":"collect","collectibleId":123}`)
+	var msg CollectMessage
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("decode collect failed: %v", err)
+	}
+	if msg.Type != MessageTypeCollect || msg.CollectibleID != 123 {
+		t.Fatalf("unexpected collect message: %+v", msg)
+	}
+}
+
+func TestEncodeCollectResult(t *testing.T) {
+	data, err := EncodeCollectResult(123, 42)
+	if err != nil {
+		t.Fatalf("encode collect_result failed: %v", err)
+	}
+	want := `{"type":"collect_result","collectibleId":123,"score":42}`
+	if string(data) != want {
+		t.Fatalf("unexpected json:\nwant %s\n got %s", want, string(data))
+	}
+}
+
+func TestEncodeCollectibleRegions(t *testing.T) {
+	regions := []game.CollectibleRegion{
+		{ID: "region-1", CenterLat: 31.2304, CenterLng: 121.4737, RadiusMeters: 200},
+		{ID: "region-2", CenterLat: 31.2350, CenterLng: 121.4780, RadiusMeters: 200},
+	}
+	data, err := EncodeCollectibleRegions(42, regions)
+	if err != nil {
+		t.Fatalf("encode collectible_regions failed: %v", err)
+	}
+
+	var msg CollectibleRegionsMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("decode collectible_regions failed: %v", err)
+	}
+	if msg.Type != MessageTypeCollectibleRegions || msg.Tick != 42 {
+		t.Fatalf("unexpected metadata: %+v", msg)
+	}
+	if len(msg.Regions) != 2 {
+		t.Fatalf("expected 2 regions, got %d", len(msg.Regions))
+	}
+	if msg.Regions[0].ID != "region-1" {
+		t.Fatalf("region[0].ID = %s", msg.Regions[0].ID)
+	}
+	// 验证不暴露 targetCount 和 respawn
+	if msg.Regions[0].CenterLat != 31.2304 {
+		t.Fatalf("regions[0].CenterLat mismatch")
+	}
+}
+
+func TestEncodeVisibleCollectiblesSnapshot(t *testing.T) {
+	collectibles := []game.Collectible{
+		{ID: 1, RegionID: "region-1", Lat: 31.2305, Lng: 121.4738},
+		{ID: 2, RegionID: "region-1", Lat: 31.2306, Lng: 121.4739},
+	}
+	data, err := EncodeVisibleCollectiblesSnapshot(42, collectibles)
+	if err != nil {
+		t.Fatalf("encode snapshot failed: %v", err)
+	}
+
+	var msg VisibleCollectiblesSnapshotMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("decode snapshot failed: %v", err)
+	}
+	if len(msg.Collectibles) != 2 {
+		t.Fatalf("expected 2 collectibles, got %d", len(msg.Collectibles))
+	}
+	// 验证按 ID 排序
+	if msg.Collectibles[0].ID != 1 || msg.Collectibles[1].ID != 2 {
+		t.Fatalf("collectibles not sorted by ID: %+v", msg.Collectibles)
+	}
+}
+
+func TestEncodeVisibleCollectiblesSnapshotEmpty(t *testing.T) {
+	data, err := EncodeVisibleCollectiblesSnapshot(42, nil)
+	if err != nil {
+		t.Fatalf("encode empty snapshot failed: %v", err)
+	}
+	var msg VisibleCollectiblesSnapshotMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("decode empty snapshot failed: %v", err)
+	}
+	if len(msg.Collectibles) != 0 {
+		t.Fatalf("expected empty collectibles, got %d", len(msg.Collectibles))
+	}
+}
+
+func TestReplicationCollectibleEnteredAndLeft(t *testing.T) {
+	changes := ReplicationChanges{
+		CollectiblesEntered: []CollectibleEnteredItem{
+			{ID: 10, RegionID: "region-1", Lat: 31.23, Lng: 121.47},
+		},
+		CollectibleIDsLeft: []uint64{5, 6},
+	}
+	if changes.IsEmpty() {
+		t.Fatal("expected non-empty changes")
+	}
+
+	normalized := NormalizeReplicationChanges(1001, changes)
+	if len(normalized.CollectiblesEntered) != 1 {
+		t.Fatalf("entered = %d, want 1", len(normalized.CollectiblesEntered))
+	}
+	if len(normalized.CollectibleIDsLeft) != 2 {
+		t.Fatalf("left = %d, want 2", len(normalized.CollectibleIDsLeft))
+	}
+
+	data, err := EncodeReplicationUpdate(42, 1001, changes)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+	var msg ReplicationUpdateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if len(msg.CollectiblesEntered) != 1 {
+		t.Fatalf("JSON entered = %d, want 1", len(msg.CollectiblesEntered))
+	}
+}
+
+func TestReplicationCollectibleContradictionNormalization(t *testing.T) {
+	// 同一 collectible 不能同时 entered 和 left
+	changes := ReplicationChanges{
+		CollectiblesEntered: []CollectibleEnteredItem{
+			{ID: 10, RegionID: "region-1", Lat: 31.23, Lng: 121.47},
+		},
+		CollectibleIDsLeft: []uint64{10},
+	}
+	normalized := NormalizeReplicationChanges(1001, changes)
+	if len(normalized.CollectiblesEntered) != 0 {
+		t.Fatalf("contradictory entered should be empty, got %d", len(normalized.CollectiblesEntered))
+	}
+	if len(normalized.CollectibleIDsLeft) != 1 {
+		t.Fatalf("left should remain, got %d", len(normalized.CollectibleIDsLeft))
+	}
+}
+
+func TestReplicationCollectibleSpawnedAndCollectedContradiction(t *testing.T) {
+	// spawned 和 collected 同时出现：collected 优先，移除 spawned 中矛盾项
+	changes := ReplicationChanges{
+		CollectiblesSpawned: []CollectibleSpawnedItem{
+			{ID: 20, RegionID: "region-1", Lat: 31.23, Lng: 121.47},
+		},
+		CollectibleIDsCollected: []uint64{20},
+	}
+	normalized := NormalizeReplicationChanges(1001, changes)
+	if len(normalized.CollectiblesSpawned) != 0 {
+		t.Fatalf("spawned should be filtered when also collected")
+	}
+	if len(normalized.CollectibleIDsCollected) != 1 {
+		t.Fatalf("collected should remain after normalization")
+	}
+}
+
+func TestReplicationEmptyCollectibleChanges(t *testing.T) {
+	changes := ReplicationChanges{}
+	if !changes.IsEmpty() {
+		t.Fatal("empty changes should be empty")
+	}
+	_, ok, err := TryEncodeReplicationUpdate(42, 1001, changes)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatal("empty changes should not produce update")
 	}
 }
 

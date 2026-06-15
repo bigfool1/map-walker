@@ -429,7 +429,7 @@ func (h *Hub) sendInitialization(client ClientSender) {
 		return
 	}
 
-	selfData, err := EncodeSelfState(tick, self)
+	selfData, err := EncodeSelfState(tick, self, 0)
 	if err != nil {
 		log.Printf("encode self state failed: %v", err)
 		h.removeClient(client)
