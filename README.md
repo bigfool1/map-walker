@@ -1,9 +1,10 @@
 # Map Walker
 
-A small server-authoritative multiplayer movement demo built with Go and
-Leaflet. Browsers register an account, then send keyboard or touch input; the Go
-server owns player positions, simulates movement at 20 Hz, replicates visible
-changes at 10 Hz via a grid-based AOI spatial index, and persists positions every
+A small server-authoritative multiplayer demo built with Go and Leaflet. Players
+register an account, move through a shared world, pick up gold collectibles for
+permanent score points, and compete on an on-demand online leaderboard. The Go
+server owns all state: positions, collectibles, scores. Movement simulates at
+20 Hz, AOI-filtered replication broadcasts at 10 Hz, and positions persist every
 5 seconds. MySQL is the production target backend; SQLite is retained for local
 development and testing.
 
@@ -14,12 +15,17 @@ go run ./cmd/map-walker
 # open http://localhost:8080 — register or log in, then move
 ```
 
-Custom host/port or MySQL:
+Custom host/port, MySQL, or collectible region configuration:
 
 ```bash
 go run ./cmd/map-walker -host 127.0.0.1 -port 3000
 go run ./cmd/map-walker -db-driver mysql -db-dsn 'user:pass@tcp(localhost:3306)/mapwalker'
+go run ./cmd/map-walker -collectible-regions my-regions.json
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-collectible-regions` | `config/collectible-regions.json` | Collectible region configuration file |
 
 Database is created automatically on first run (`data/map-walker.db` for SQLite).
 Press **Ctrl+C** for graceful shutdown — all online positions are saved before exit.
@@ -61,6 +67,37 @@ MAP_WALKER_ADMIN_TOKEN=my-secret-token go run ./cmd/map-walker \
 The page polls `/api/admin/synthetic-stats` once per second.
 The token is kept only in `sessionStorage` (tab-scoped, cleared on tab close)
 and never sent to the server outside the `Authorization: Bearer` header.
+
+## Collectible Gameplay
+
+Three translucent gold circular regions are displayed on the map. Each region
+contains 20 collectible gems rendered as glowing gold points. Walk within 10
+meters of a gem — the nearest one highlights — and press `J` (desktop) or tap
+the circular pickup button (touch, lower-right corner) to collect it.
+
+Each successful pickup awards exactly **one permanent score point**. The server
+validates every pickup: the collectible must exist, be visible, and the
+authoritative distance must be ≤10 meters. Scores are persisted asynchronously
+without blocking gameplay; on disconnect or shutdown the latest score is
+submitted synchronously.
+
+Collected items respawn after a random 5-15 second delay in the same region.
+Collectible instances are in-memory only — a server restart creates fresh items
+while preserving player scores.
+
+### Score and Leaderboard
+
+Your permanent score appears between the connection status bar and the map.
+Open the **排行** (leaderboard) button to see the current Top 5 online players
+and your rank. The leaderboard computes rankings on demand — no polling,
+caching, or push updates. Synthetic (bot) accounts are excluded.
+
+### Synthetic Exclusion
+
+Synthetic clients move through the same world and are visible on the map, but
+they cannot collect items or appear on the leaderboard. The `is_synthetic`
+flag is a persistent, server-trusted user property set during account
+provisioning.
 
 ## Architecture
 
@@ -107,31 +144,32 @@ Client → Server:
 
 ```json
 {"type":"input","sequence":42,"up":true,"down":false,"left":false,"right":true}
+{"type":"collect","collectibleId":123}
 ```
 
-Server → Newly Connected Client (in order):
+Server → Newly Connected Client (in order, 4 messages):
 
 ```json
-{"type":"self_state","tick":1280,"player":{"id":1,"username":"alice","lat":31.23,"lng":121.47,"appearance":{"color":"#3388ff","shape":"circle"}}}
-```
-```json
-{"type":"visible_entities_snapshot","tick":1280,"players":[{"id":2,"username":"bob","lat":31.24,"lng":121.48,"appearance":{"color":"#ff6600","shape":"diamond"}}]}
+{"type":"self_state","tick":1280,"player":{...},"score":42}
+{"type":"visible_entities_snapshot","tick":1280,"players":[...]}
+{"type":"collectible_regions","tick":1280,"regions":[{"id":"region-1","centerLat":31.2304,"centerLng":121.4737,"radiusMeters":200}]}
+{"type":"visible_collectibles_snapshot","tick":1280,"collectibles":[{"id":1,"regionId":"region-1","lat":31.2305,"lng":121.4738}]}
 ```
 
 Server → Existing Clients (10 Hz, per-client):
 
 ```json
-{"type":"replication_update","tick":1282,"positions":[{"id":2,"lat":31.24,"lng":121.48}],"entered":[{"id":3,"username":"carol","lat":31.25,"lng":121.49,"appearance":{...}}],"leftPlayerIds":[4],"appearances":[{"playerId":2,"appearance":{...}}]}
+{"type":"replication_update","tick":1282,"positions":[...],"entered":[...],"leftPlayerIds":[...],"appearances":[...],"collectiblesEntered":[...],"collectibleIdsLeft":[...],"collectiblesSpawned":[...],"collectibleIdsCollected":[...]}
 ```
 
-Server → All Clients (on appearance change):
+Server → Winner (on successful pickup):
 
 ```json
-{"type":"appearance_changed","playerId":2,"appearance":{"color":"#ff6600","shape":"diamond"}}
+{"type":"collect_result","collectibleId":123,"score":43}
 ```
 
 Player IDs are BIGINT database user IDs — the server ignores client-supplied
-player IDs.
+player IDs, positions, scores, and synthetic identity.
 
 ## HTTP API
 
@@ -142,6 +180,7 @@ player IDs.
 | `POST` | `/api/logout` | No | Revoke session, clear cookie |
 | `GET` | `/api/session` | No | Return current user or 401 |
 | `PUT` | `/api/appearance` | Session | Update marker color/shape |
+| `GET` | `/api/leaderboard/online` | Session | Online Top 5 + self rank |
 | `GET` | `/ws` | Session | WebSocket upgrade |
 | `GET` | `/healthz` | No | Health check |
 | `GET` | `/admin` | — | Admin dashboard (404 if `MAP_WALKER_ADMIN_TOKEN` unset) |

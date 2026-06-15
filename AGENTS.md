@@ -1,29 +1,33 @@
 # AGENTS.md — map-walker
 
-Go 1.26 项目，服务端权威的 WebSocket 实时移动服务。支持用户账户、会话认证、位置持久化、外观同步、AOI 空间索引、按可见性复制和合成客户端负载。
+Go 1.26 项目，服务端权威的 WebSocket 实时移动+收集服务。支持用户账户、会话认证、位置/分数持久化、外观同步、AOI 空间索引、按可见性复制、收集品拾取、在线排行榜和合成客户端负载。
 
 ## 目录结构
 
 ```
 cmd/map-walker/      — 服务入口、信号处理、优雅关闭、合成客户端 flags
-internal/game/       — World、输入状态、移动模拟、外观、AOI 空间索引
-internal/realtime/   — Hub actor loop、tick 调度、连接、消息协议、复制、持久化接口、HubSnapshot
-internal/server/     — HTTP 路由、静态文件、WebSocket 接入、认证/外观/admin 端点
-internal/auth/       — 用户注册/登录、会话管理、外观校验、bcrypt 密码
-internal/storage/    — SQLite/MySQL、迁移、用户/会话/位置/外观持久化
+config/              — 收集品区域 JSON 配置
+internal/game/       — World、输入状态、移动模拟、外观、AOI 空间索引、CollectibleField、区域配置
+internal/realtime/   — Hub actor loop、tick 调度、连接、消息协议、复制、持久化接口、HubSnapshot、排行榜、拾取处理
+internal/server/     — HTTP 路由、静态文件、WebSocket 接入、认证/外观/排行榜/admin 端点
+internal/auth/       — 用户注册/登录、会话管理、外观校验、bcrypt 密码、合成身份传递
+internal/storage/    — SQLite/MySQL、迁移、用户/会话/位置/外观/分数持久化、ScorePersister
 internal/storage/migrations/ — 按序号命名的向前 SQL 迁移文件
 internal/synthetic/  — 合成客户端：Client、Manager、Provisioner、SyntheticSnapshot
-web/                 — Leaflet 地图、认证卡片、账户菜单、外观编辑器、虚拟摇杆、admin 页面
+web/                 — Leaflet 地图、认证卡片、账户菜单、外观编辑器、虚拟摇杆、admin 页面、收集品 UI、排行榜
 ```
 
-- `messages.go` 定义 `input` / `self_state` / `visible_entities_snapshot` / `replication_update` / `appearance_changed` 协议
-- `game.World` 拥有玩家坐标、外观、moved/removed 集合；客户端只能发送输入状态
-- `game.AOIIndex` 600m 网格空间索引，500m 进入/600m 离开迟滞，九格候选扫描
-- `Hub.Run()` 是唯一 actor loop，按 20 Hz 模拟、10 Hz AOI 复制、每 5s 持久化位置
-- 用户身份通过 `map_walker_session` cookie（SHA-256 哈希 token）传递到 WebSocket
+- `messages.go` 定义 `input` / `collect` / `self_state` / `visible_entities_snapshot` / `collectible_regions` / `visible_collectibles_snapshot` / `replication_update` / `collect_result` 协议
+- `game.World` 拥有玩家坐标、外观、moved/removed 集合；客户端只能发送输入状态和拾取意图
+- `game.CollectibleField` 拥有收集品实例、600m 网格空间索引、替换调度；纯逻辑无锁
+- `game.AOIIndex` 600m 网格空间索引，500m 进入/600m 离开迟滞，九格候选扫描；`QueryPlayerIDsNearPoint` 用于收集品反向扇出
+- `Hub.Run()` 是唯一 actor loop，按 20 Hz 模拟、10 Hz AOI 复制、推进收集品替换、处理拾取、每 5s 持久化位置
+- 用户身份和合成标记通过 `map_walker_session` cookie（SHA-256 哈希 token）传递到 WebSocket；合成身份是服务端信任的持久属性
 - `synthetic.Manager` 管理合成客户端生命周期、ramp-up 和聚合统计（`SyntheticSnapshot`）
 - `Hub.Snapshot()` / `Manager.Snapshot()` 返回不可变的统计快照，供 admin API 消费
 - admin 页面 (`/admin`) 和 stats API (`/api/admin/synthetic-stats`) 仅在 `MAP_WALKER_ADMIN_TOKEN` 设置时激活
+- 收集品分数通过 `ScorePersister` 异步持久化，合并去重，失败指数退避重试（上限 30s），断连/登出/关闭时同步提交
+- 排行榜通过 Hub actor 请求/响应按需计算，无缓存/轮询/推送；过滤合成和离线用户
 
 ## 命令
 
