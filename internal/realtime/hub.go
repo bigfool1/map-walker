@@ -456,7 +456,7 @@ func (h *Hub) broadcastReplication() {
 	movedIDs := h.world.TakeMovedPlayerIDs()
 	h.world.TakeRemovedPlayerIDs()
 
-	visibilityBefore := h.snapshotVisibility()
+	oldNeighborsByMover := h.snapshotMoverVisibility(movedIDs)
 	h.applyMovementAOIChanges(movedIDs)
 	h.stats.movedPlayers += uint64(len(movedIDs))
 
@@ -486,7 +486,7 @@ func (h *Hub) broadcastReplication() {
 			if playerID == client.ID() {
 				continue
 			}
-			if !h.wasVisibleTo(visibilityBefore, client.ID(), playerID) || !h.isVisibleTo(client.ID(), playerID) {
+			if !h.moverHadNeighbor(oldNeighborsByMover, playerID, client.ID()) || !h.isVisibleTo(client.ID(), playerID) {
 				continue
 			}
 			if position, ok := h.world.PlayerPosition(playerID); ok {
@@ -529,25 +529,28 @@ func (h *Hub) broadcastReplication() {
 	}
 }
 
-func (h *Hub) snapshotVisibility() map[int64]map[int64]struct{} {
-	snapshot := make(map[int64]map[int64]struct{}, len(h.clients))
-	for clientID := range h.clients {
-		neighbors := h.aoi.VisibleNeighbors(clientID)
+// snapshotMoverVisibility 只为移动者捕获旧可见邻居集，不再复制全部已连接客户端。
+func (h *Hub) snapshotMoverVisibility(movedIDs []int64) map[int64]map[int64]struct{} {
+	snapshot := make(map[int64]map[int64]struct{}, len(movedIDs))
+	for _, playerID := range movedIDs {
+		neighbors := h.aoi.VisibleNeighbors(playerID)
 		set := make(map[int64]struct{}, len(neighbors))
 		for _, neighborID := range neighbors {
 			set[neighborID] = struct{}{}
 		}
-		snapshot[clientID] = set
+		snapshot[playerID] = set
 	}
 	return snapshot
 }
 
-func (h *Hub) wasVisibleTo(visibilityBefore map[int64]map[int64]struct{}, clientID, playerID int64) bool {
-	neighbors, ok := visibilityBefore[clientID]
+// moverHadNeighbor 检查 observerID 在 mover 移动前是否在 mover 的可见邻居集中。
+// 利用 AOI 对称性：旧可见集 key=clientID 含 playerID ⇔ key=playerID 含 clientID。
+func (h *Hub) moverHadNeighbor(oldNeighborsByMover map[int64]map[int64]struct{}, moverID, observerID int64) bool {
+	neighbors, ok := oldNeighborsByMover[moverID]
 	if !ok {
 		return false
 	}
-	_, visible := neighbors[playerID]
+	_, visible := neighbors[observerID]
 	return visible
 }
 
