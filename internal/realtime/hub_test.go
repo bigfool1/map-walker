@@ -1093,6 +1093,377 @@ func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
 	}
 }
 
+// 多移动者稳定可见 — 观察者收到每个移动者的位置
+func TestHubMultipleStableMoversUpdateOneObserver(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {100, 0},
+		1003: {0, 100},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	carol := NewTestClient(1003, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	hub.Register(carol)
+	mustReceiveInitialization(t, carol)
+
+	broadcasts <- time.Now()
+	entered := mustReceiveReplicationUpdate(t, alice)
+	if len(entered.Entered) != 2 {
+		t.Fatalf("expected 2 entered for alice, got %+v", entered)
+	}
+	// bob 也看到 carol 进入
+	mustReceiveReplicationUpdate(t, bob)
+	// carol 也看到 bob 进入
+	mustReceiveReplicationUpdate(t, carol)
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	hub.ApplyInput(carol, game.InputState{Sequence: 1, Up: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.Positions) != 2 {
+		t.Fatalf("expected 2 positions for alice, got %+v", update)
+	}
+	ids := map[int64]bool{}
+	for _, p := range update.Positions {
+		ids[p.ID] = true
+	}
+	if !ids[1002] || !ids[1003] {
+		t.Fatalf("expected positions for 1002 and 1003, got %+v", update.Positions)
+	}
+	if len(update.Entered) != 0 || len(update.LeftPlayerIDs) != 0 {
+		t.Fatalf("expected position-only update, got %+v", update)
+	}
+}
+
+// 同广播多进入 — 两个玩家在同一 tick 进入观察者视野
+func TestHubSameBroadcastMultipleEntry(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {550, 0},
+		1003: {0, 550},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	carol := NewTestClient(1003, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	hub.Register(carol)
+	mustReceiveInitialization(t, carol)
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+
+	// 每个玩家两帧，进入 alice 的 500m 范围
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Left: true})
+	hub.ApplyInput(carol, game.InputState{Sequence: 1, Down: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Left: true})
+	hub.ApplyInput(carol, game.InputState{Sequence: 2, Down: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.Entered) != 2 {
+		t.Fatalf("expected 2 entered for alice, got %+v", update)
+	}
+	enteredIDs := map[int64]bool{}
+	for _, e := range update.Entered {
+		enteredIDs[e.ID] = true
+	}
+	if !enteredIDs[1002] || !enteredIDs[1003] {
+		t.Fatalf("expected entered for 1002 and 1003, got %+v", update.Entered)
+	}
+	// 进入的玩家不应同时出现在 positions 中
+	if len(update.Positions) != 0 {
+		t.Fatalf("entered players should not appear in positions: %+v", update)
+	}
+}
+
+// 同广播多离开 — 两个玩家在同一 tick 离开观察者视野
+func TestHubSameBroadcastMultipleLeave(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {350, 0},
+		1003: {0, 350},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	carol := NewTestClient(1003, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	hub.Register(carol)
+	mustReceiveInitialization(t, carol)
+
+	broadcasts <- time.Now()
+	entered := mustReceiveReplicationUpdate(t, alice)
+	if len(entered.Entered) != 2 {
+		t.Fatalf("expected 2 entered for alice, got %+v", entered)
+	}
+	// bob 和 carol 也互见
+	mustReceiveReplicationUpdate(t, bob)
+	mustReceiveReplicationUpdate(t, carol)
+
+	// 两个移动者远离 alice，各三帧，确保超出 600m 离开范围
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	hub.ApplyInput(carol, game.InputState{Sequence: 1, Up: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Right: true})
+	hub.ApplyInput(carol, game.InputState{Sequence: 2, Up: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 3, Right: true})
+	hub.ApplyInput(carol, game.InputState{Sequence: 3, Up: true})
+	simulations <- time.Now()
+	assertNoMessage(t, alice)
+	broadcasts <- time.Now()
+
+	update := mustReceiveReplicationUpdate(t, alice)
+	if len(update.LeftPlayerIDs) != 2 {
+		t.Fatalf("expected 2 left for alice, got %+v", update)
+	}
+	// 离开的玩家不应出现在 positions 中
+	if len(update.Positions) != 0 {
+		t.Fatalf("left players should not appear in positions: %+v", update)
+	}
+}
+
+// 移动者只收到 SelfPosition，不收到自己的 positions/entered/left
+func TestHubSelfPositionNotDuplicatedInOtherFields(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {100, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice) // bob entered
+	assertNoMessage(t, bob)
+
+	// 两个人都移动
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
+	if aliceUpdate.SelfPosition == nil {
+		t.Fatalf("expected self position for alice, got %+v", aliceUpdate)
+	}
+	for _, p := range aliceUpdate.Positions {
+		if p.ID == 1001 {
+			t.Fatalf("self should not appear in positions: %+v", aliceUpdate)
+		}
+	}
+	for _, e := range aliceUpdate.Entered {
+		if e.ID == 1001 {
+			t.Fatalf("self should not appear in entered: %+v", aliceUpdate)
+		}
+	}
+	for _, id := range aliceUpdate.LeftPlayerIDs {
+		if id == 1001 {
+			t.Fatalf("self should not appear in left: %+v", aliceUpdate)
+		}
+	}
+}
+
+// selectiveFailClient 用于测试队列满时的移除场景
+type selectiveFailClient struct {
+	*testClient
+	fail bool
+}
+
+func (c *selectiveFailClient) Send(data []byte) bool {
+	if c.fail {
+		return false
+	}
+	return c.testClient.Send(data)
+}
+
+// 队列满移除时，其他累积接收者仍收到有效更新
+func TestHubQueueFullRemovalPreservesOtherRecipients(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {100, 0},
+		1003: {0, 100},
+		1004: {100, 100},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	carol := NewTestClient(1003, 8)
+	failClient := &selectiveFailClient{testClient: NewTestClient(1004, 8)}
+
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	hub.Register(carol)
+	mustReceiveInitialization(t, carol)
+	hub.Register(failClient)
+	mustReceiveInitialization(t, failClient.testClient)
+
+	broadcasts <- time.Now()
+	// 第一轮广播 — 所有人收到其他玩家的进入消息
+	mustReceiveReplicationUpdate(t, alice)
+	mustReceiveReplicationUpdate(t, bob)
+	mustReceiveReplicationUpdate(t, carol)
+	mustReceiveReplicationUpdate(t, failClient.testClient)
+
+	// 让 failClient 在复制阶段 Send 失败
+	failClient.fail = true
+
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	// alice 和 carol 仍应收到 bob 的位置更新
+	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
+	if len(aliceUpdate.Positions) != 1 || aliceUpdate.Positions[0].ID != 1002 {
+		t.Fatalf("expected bob position for alice, got %+v", aliceUpdate)
+	}
+	carolUpdate := mustReceiveReplicationUpdate(t, carol)
+	if len(carolUpdate.Positions) != 1 || carolUpdate.Positions[0].ID != 1002 {
+		t.Fatalf("expected bob position for carol, got %+v", carolUpdate)
+	}
+
+	// failClient 应被移除
+	select {
+	case <-failClient.done:
+	case <-time.After(time.Second):
+		t.Fatal("expected fail client to be removed")
+	}
+}
+
+// 移动触发的进入方向性 — 观察者收到移动者的 entered，移动者不收到观察者的 entered
+func TestHubMovementEntryDirectionality(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {550, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+
+	broadcasts <- time.Now()
+	assertNoMessage(t, alice)
+	assertNoMessage(t, bob)
+
+	// bob 向 alice 移动，进入 alice 的 500m 范围
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Left: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Left: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	// alice（观察者）收到 bob 的 entered
+	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
+	if len(aliceUpdate.Entered) != 1 || aliceUpdate.Entered[0].ID != 1002 {
+		t.Fatalf("expected bob entered for alice, got %+v", aliceUpdate)
+	}
+
+	// bob（移动者）不收到 alice 的 entered
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	if bobUpdate.SelfPosition == nil {
+		t.Fatalf("expected self position for bob, got %+v", bobUpdate)
+	}
+	for _, e := range bobUpdate.Entered {
+		if e.ID == 1001 {
+			t.Fatalf("mover should not receive observer as entered: %+v", bobUpdate)
+		}
+	}
+}
+
+// 移动触发的离开方向性 — 观察者收到移动者的 left，移动者不收到观察者的 left
+func TestHubMovementLeaveDirectionality(t *testing.T) {
+	loader := fixedPositionsLoader(map[int64][2]float64{
+		1001: {0, 0},
+		1002: {450, 0},
+	})
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	bob := NewTestClient(1002, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+
+	broadcasts <- time.Now()
+	entered := mustReceiveReplicationUpdate(t, alice)
+	if len(entered.Entered) != 1 || entered.Entered[0].ID != 1002 {
+		t.Fatalf("expected bob entered for alice, got %+v", entered)
+	}
+	assertNoMessage(t, bob)
+
+	// bob 远离 alice，超出 600m 离开范围
+	hub.ApplyInput(bob, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	hub.ApplyInput(bob, game.InputState{Sequence: 2, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	// alice（观察者）收到 bob 的 left
+	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
+	if len(aliceUpdate.LeftPlayerIDs) != 1 || aliceUpdate.LeftPlayerIDs[0] != 1002 {
+		t.Fatalf("expected bob left for alice, got %+v", aliceUpdate)
+	}
+
+	// bob（移动者）不收到 alice 的 left
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	if bobUpdate.SelfPosition == nil {
+		t.Fatalf("expected self position for bob, got %+v", bobUpdate)
+	}
+	for _, id := range bobUpdate.LeftPlayerIDs {
+		if id == 1001 {
+			t.Fatalf("mover should not receive observer as left: %+v", bobUpdate)
+		}
+	}
+}
+
 func TestHubLogsAOIStats(t *testing.T) {
 	var logOutput syncBuffer
 	originalWriter := log.Writer()
