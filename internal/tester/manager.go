@@ -61,7 +61,7 @@ func (m *Manager) provision(ctx context.Context) {
 		result.Created, result.Reused, result.Corrected, result.Failed)
 }
 
-func (m *Manager) generateSessions(ctx context.Context) {
+func (m *Manager) generateSessions() {
 	users, err := m.db.LoadSyntheticUsers()
 	if err != nil {
 		log.Printf("加载合成用户失败: %v", err)
@@ -239,7 +239,7 @@ func (m *Manager) Run() {
 	}
 
 	// 2. 生成会话
-	m.generateSessions(ctx)
+	m.generateSessions()
 
 	// 3. 启动连接（内部初始化 clients/behaviors 数组）
 	m.rampUp(ctx)
