@@ -469,48 +469,85 @@ func (h *Hub) broadcastReplication() {
 	}
 
 	tick := h.world.Tick()
-	movedSet := int64Set(movedIDs)
+	byRecipient := make(map[int64]*ReplicationChanges)
 
-	for _, client := range h.clients {
-		changes := ReplicationChanges{
-			LeftPlayerIDs: pendingLeft[client.ID()],
+	// 自位置：每个已连接的移动者
+	for _, playerID := range movedIDs {
+		if _, connected := h.clients[playerID]; !connected {
+			continue
 		}
-
-		if setContains(movedSet, client.ID()) {
-			if position, ok := h.world.PlayerPosition(client.ID()); ok {
-				changes.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
-			}
+		if position, ok := h.world.PlayerPosition(playerID); ok {
+			entry := getOrCreateRecipient(byRecipient, playerID)
+			entry.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
 		}
+	}
 
-		for _, playerID := range movedIDs {
-			if playerID == client.ID() {
+	// 稳定关系位置：从移动者扇出到旧邻居（同时仍在最终可见集中）
+	for _, moverID := range movedIDs {
+		position, ok := h.world.PlayerPosition(moverID)
+		if !ok {
+			continue
+		}
+		oldNeighbors := oldNeighborsByMover[moverID]
+		for _, neighborID := range h.aoi.VisibleNeighbors(moverID) {
+			if _, inOld := oldNeighbors[neighborID]; !inOld {
 				continue
 			}
-			if !h.moverHadNeighbor(oldNeighborsByMover, playerID, client.ID()) || !h.isVisibleTo(client.ID(), playerID) {
+			if _, connected := h.clients[neighborID]; !connected {
 				continue
 			}
-			if position, ok := h.world.PlayerPosition(playerID); ok {
-				changes.Positions = append(changes.Positions, position)
-			}
+			entry := getOrCreateRecipient(byRecipient, neighborID)
+			entry.Positions = append(entry.Positions, position)
 		}
+	}
 
-		for _, state := range pendingEntered {
-			if state.ID != client.ID() && h.isVisibleTo(client.ID(), state.ID) {
-				changes.Entered = append(changes.Entered, state)
-			}
-		}
-
-		for playerID, appearance := range pendingAppearances {
-			if playerID != client.ID() && !h.isVisibleTo(client.ID(), playerID) {
+	// 待处理进入：从进入者扇出到当前可见的已连接邻居
+	for _, state := range pendingEntered {
+		for _, neighborID := range h.aoi.VisibleNeighbors(state.ID) {
+			if _, connected := h.clients[neighborID]; !connected {
 				continue
 			}
-			changes.Appearances = append(changes.Appearances, PlayerAppearanceUpdate{
+			entry := getOrCreateRecipient(byRecipient, neighborID)
+			entry.Entered = append(entry.Entered, state)
+		}
+	}
+
+	// 待处理离开（已按接收者 key 存储）
+	for recipientID, leftIDs := range pendingLeft {
+		if _, connected := h.clients[recipientID]; !connected {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.LeftPlayerIDs = append(entry.LeftPlayerIDs, leftIDs...)
+	}
+
+	// 待处理外观变更：变更者本人和其可见邻居
+	for playerID, appearance := range pendingAppearances {
+		if _, connected := h.clients[playerID]; connected {
+			entry := getOrCreateRecipient(byRecipient, playerID)
+			entry.Appearances = append(entry.Appearances, PlayerAppearanceUpdate{
 				PlayerID:   playerID,
 				Appearance: appearance,
 			})
 		}
+		for _, neighborID := range h.aoi.VisibleNeighbors(playerID) {
+			if _, connected := h.clients[neighborID]; connected {
+				entry := getOrCreateRecipient(byRecipient, neighborID)
+				entry.Appearances = append(entry.Appearances, PlayerAppearanceUpdate{
+					PlayerID:   playerID,
+					Appearance: appearance,
+				})
+			}
+		}
+	}
 
-		data, ok, err := TryEncodeReplicationUpdate(tick, client.ID(), changes)
+	// 编码并只发送给累积了变更的接收者
+	for recipientID, changes := range byRecipient {
+		client, connected := h.clients[recipientID]
+		if !connected {
+			continue
+		}
+		data, ok, err := TryEncodeReplicationUpdate(tick, recipientID, *changes)
 		if err != nil {
 			log.Printf("encode replication update failed: %v", err)
 			continue
@@ -527,6 +564,16 @@ func (h *Hub) broadcastReplication() {
 			h.removeClient(client)
 		}
 	}
+}
+
+// getOrCreateRecipient 在广播本地累积 map 中获取或创建接收者条目。
+func getOrCreateRecipient(byRecipient map[int64]*ReplicationChanges, recipientID int64) *ReplicationChanges {
+	entry, ok := byRecipient[recipientID]
+	if !ok {
+		entry = &ReplicationChanges{}
+		byRecipient[recipientID] = entry
+	}
+	return entry
 }
 
 // snapshotMoverVisibility 只为移动者捕获旧可见邻居集，不再复制全部已连接客户端。
