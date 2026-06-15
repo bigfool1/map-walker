@@ -458,3 +458,203 @@ body {
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+
+.collectible-region {
+  fill: rgba(255, 215, 0, 0.08);
+  stroke: rgba(218, 180, 0, 0.45);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.collectible-gem {
+  background: transparent;
+  border: none;
+}
+
+.collectible-gem__dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffe680 0%, #f0a000 60%, #b87000 100%);
+  box-shadow: 0 0 6px 2px rgba(240, 160, 0, 0.55);
+}
+
+.collectible-gem--target .collectible-gem__dot {
+  width: 14px;
+  height: 14px;
+  box-shadow: 0 0 12px 4px rgba(240, 180, 0, 0.8);
+}
+
+.score-display {
+  position: fixed;
+  top: 54px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1b1f23;
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.score-display__label {
+  font-weight: 400;
+  font-size: 12px;
+  color: #888;
+  margin-right: 4px;
+}
+
+.score-pop {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 3000;
+  transform: translate(-50%, -50%);
+  font-size: 36px;
+  font-weight: 800;
+  color: #f0a000;
+  pointer-events: none;
+  animation: scorePop 1s ease-out forwards;
+}
+
+@keyframes scorePop {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  60% { opacity: 1; transform: translate(-50%, -80%) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -120%) scale(0.8); }
+}
+
+.pickup-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 40px;
+  z-index: 2000;
+  width: 64px;
+  height: 64px;
+  border: 3px solid rgba(180, 120, 0, 0.6);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffe680 0%, #f0a000 60%, #b87000 100%);
+  box-shadow: 0 0 12px 4px rgba(240, 160, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  touch-action: manipulation;
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.pickup-btn:active:not(:disabled) {
+  transform: scale(0.9);
+  box-shadow: 0 0 6px 2px rgba(240, 160, 0, 0.3);
+}
+
+.pickup-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.leaderboard-panel {
+  position: fixed;
+  top: 100px;
+  right: 16px;
+  z-index: 2000;
+  width: 220px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  font-size: 13px;
+}
+
+.leaderboard-panel__title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1b1f23;
+}
+
+.leaderboard-panel__list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.leaderboard-panel__item {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  color: #333;
+}
+
+.leaderboard-panel__item--self {
+  font-weight: 700;
+  color: #1b6ef3;
+}
+
+.leaderboard-panel__rank {
+  color: #999;
+  width: 24px;
+}
+
+.leaderboard-panel__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-panel__score {
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.leaderboard-panel__self {
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  color: #555;
+  font-size: 12px;
+}
+
+.leaderboard-panel__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  cursor: pointer;
+  color: #999;
+  line-height: 1;
+}
+
+.leaderboard-toggle {
+  position: fixed;
+  top: 12px;
+  right: 164px;
+  z-index: 1001;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1b1f23;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.leaderboard-toggle:hover {
+  border-color: #4a86e8;
+}

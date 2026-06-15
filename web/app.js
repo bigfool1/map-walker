@@ -3,6 +3,8 @@ const MARKER_SIZE = 20;
 const MARKER_ANCHOR = MARKER_SIZE / 2;
 const DEFAULT_APPEARANCE = { color: "#3388ff", shape: "circle" };
 const APPEARANCE_SHAPES = ["circle", "square", "diamond", "triangle"];
+const PICKUP_RADIUS = 10;
+const PICKUP_COOLDOWN = 300;
 
 let currentUserId = null;
 let currentUsername = null;
@@ -19,6 +21,16 @@ const input = {
   left: false,
   right: false,
 };
+
+// 收集品状态
+let collectibleRegions = [];
+const collectibleGems = new Map();
+let targetCollectibleId = null;
+let authoritativeScore = 0;
+let pickupCooldownUntil = 0;
+let leaderboardOpen = false;
+const selfPosition = { lat: startPosition.lat, lng: startPosition.lng };
+const regionCircles = [];
 
 const retryDelays = [1000, 2000, 4000, 8000, 10000];
 
@@ -50,6 +62,8 @@ bindJoystickControls();
 bindInputSafetyControls();
 bindAuthControls();
 bindAccountControls();
+bindPickupControls();
+bindLeaderboardControls();
 
 async function bootstrap() {
   const session = await fetchSession();
@@ -83,6 +97,7 @@ function showAuthCard() {
   currentUserId = null;
   currentUsername = null;
   resetAccountUI();
+  resetCollectibleUI();
   hideAccountControl();
   resetAuthMode();
   document.getElementById("auth-card").style.display = "";
@@ -103,6 +118,8 @@ function hideAuthCard() {
   document.getElementById("auth-card").style.display = "none";
   document.getElementById("status").style.display = "";
   document.querySelector(".joystick").style.display = "";
+  document.getElementById("leaderboard-toggle").style.display = "";
+  updatePickupButton();
 }
 
 function showAccountControl() {
@@ -349,11 +366,17 @@ function connect() {
     }
     const message = JSON.parse(event.data);
     if (message.type === "self_state") {
-      renderSelfState(message.player);
+      handleSelfState(message);
     } else if (message.type === "visible_entities_snapshot") {
       renderVisibleEntitiesSnapshot(message.players);
     } else if (message.type === "replication_update") {
       applyReplicationUpdate(message);
+    } else if (message.type === "collectible_regions") {
+      handleCollectibleRegions(message);
+    } else if (message.type === "visible_collectibles_snapshot") {
+      handleCollectibleSnapshot(message);
+    } else if (message.type === "collect_result") {
+      handleCollectResult(message);
     }
   });
 
@@ -364,6 +387,333 @@ function connect() {
     socket = null;
     scheduleReconnect();
   });
+}
+
+// --- 收集品渲染 ---
+
+function handleSelfState(message) {
+  renderSelfState(message.player);
+  if (typeof message.score === "number") {
+    authoritativeScore = message.score;
+    updateScoreDisplay();
+  }
+  selfPosition.lat = message.player.lat;
+  selfPosition.lng = message.player.lng;
+  updateTargetSelection();
+}
+
+function handleCollectibleRegions(message) {
+  clearRegionCircles();
+  collectibleRegions = message.regions || [];
+  for (const region of collectibleRegions) {
+    const circle = L.circle([region.centerLat, region.centerLng], {
+      radius: region.radiusMeters,
+      className: "collectible-region",
+      interactive: false,
+    }).addTo(map);
+    regionCircles.push(circle);
+  }
+}
+
+function handleCollectibleSnapshot(message) {
+  for (const [, gem] of collectibleGems) {
+    gem.marker.remove();
+  }
+  collectibleGems.clear();
+  for (const item of message.collectibles || []) {
+    addCollectibleGem(item);
+  }
+  updateTargetSelection();
+}
+
+function applyReplicationUpdate(message) {
+  const leftIds = new Set(message.leftPlayerIds || []);
+
+  for (const playerId of leftIds) {
+    if (playerId !== currentUserId) {
+      removePlayerMarker(playerId);
+    }
+  }
+
+  if (message.selfPosition) {
+    updateSelfPosition(message.selfPosition);
+    selfPosition.lat = message.selfPosition.lat;
+    selfPosition.lng = message.selfPosition.lng;
+  }
+
+  for (const player of message.entered || []) {
+    if (player.id === currentUserId || leftIds.has(player.id)) {
+      continue;
+    }
+    upsertPlayerFromSnapshot(player);
+  }
+
+  for (const position of message.positions || []) {
+    if (position.id === currentUserId || leftIds.has(position.id)) {
+      continue;
+    }
+    updatePlayerPosition(position);
+  }
+
+  for (const update of message.appearances || []) {
+    if (leftIds.has(update.playerId)) {
+      continue;
+    }
+    renderAppearanceChanged(update.playerId, update.appearance);
+  }
+
+  // 收集品变化
+  for (const item of message.collectiblesEntered || []) {
+    addCollectibleGem(item);
+  }
+  for (const id of message.collectibleIdsLeft || []) {
+    removeCollectibleGem(id);
+  }
+  for (const item of message.collectiblesSpawned || []) {
+    addCollectibleGem(item);
+  }
+  for (const id of message.collectibleIdsCollected || []) {
+    removeCollectibleGem(id);
+  }
+  updateTargetSelection();
+}
+
+function handleCollectResult(message) {
+  authoritativeScore = message.score;
+  updateScoreDisplay();
+  showScorePop();
+}
+
+function addCollectibleGem(item) {
+  if (collectibleGems.has(item.id)) {
+    return;
+  }
+  const icon = L.divIcon({
+    className: "collectible-gem",
+    html: '<span class="collectible-gem__dot"></span>',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+  const marker = L.marker([item.lat, item.lng], { icon, interactive: false }).addTo(map);
+  collectibleGems.set(item.id, { marker, regionId: item.regionId, lat: item.lat, lng: item.lng });
+}
+
+function removeCollectibleGem(id) {
+  const entry = collectibleGems.get(id);
+  if (!entry) {
+    return;
+  }
+  entry.marker.remove();
+  collectibleGems.delete(id);
+  if (targetCollectibleId === id) {
+    targetCollectibleId = null;
+  }
+}
+
+function updateTargetSelection() {
+  let bestId = null;
+  let bestDist = Infinity;
+
+  for (const [id, gem] of collectibleGems) {
+    const dist = haversineMeters(selfPosition.lat, selfPosition.lng, gem.lat, gem.lng);
+    if (dist <= PICKUP_RADIUS && dist < bestDist) {
+      bestDist = dist;
+      bestId = id;
+    }
+  }
+
+  if (bestId === targetCollectibleId) {
+    return;
+  }
+
+  // 取消旧目标高亮
+  if (targetCollectibleId !== null) {
+    const oldEntry = collectibleGems.get(targetCollectibleId);
+    if (oldEntry) {
+      const oldIcon = L.divIcon({
+        className: "collectible-gem",
+        html: '<span class="collectible-gem__dot"></span>',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      oldEntry.marker.setIcon(oldIcon);
+    }
+  }
+
+  targetCollectibleId = bestId;
+
+  // 高亮新目标
+  if (targetCollectibleId !== null) {
+    const newEntry = collectibleGems.get(targetCollectibleId);
+    if (newEntry) {
+      const newIcon = L.divIcon({
+        className: "collectible-gem collectible-gem--target",
+        html: '<span class="collectible-gem__dot"></span>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      newEntry.marker.setIcon(newIcon);
+    }
+  }
+
+  updatePickupButton();
+}
+
+function updatePickupButton() {
+  const btn = document.getElementById("pickup-btn");
+  const connected = socket && socket.readyState === WebSocket.OPEN;
+  const hasTarget = targetCollectibleId !== null;
+  const cooldownActive = Date.now() < pickupCooldownUntil;
+  btn.disabled = !connected || !hasTarget || cooldownActive;
+}
+
+function performPickup() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  if (targetCollectibleId === null) {
+    return;
+  }
+  if (Date.now() < pickupCooldownUntil) {
+    return;
+  }
+  pickupCooldownUntil = Date.now() + PICKUP_COOLDOWN;
+  updatePickupButton();
+  socket.send(JSON.stringify({
+    type: "collect",
+    collectibleId: targetCollectibleId,
+  }));
+  // 冷却结束后刷新按钮状态
+  setTimeout(updatePickupButton, PICKUP_COOLDOWN + 10);
+}
+
+function updateScoreDisplay() {
+  const display = document.getElementById("score-display");
+  const value = document.getElementById("score-value");
+  display.style.display = "";
+  value.textContent = String(authoritativeScore);
+}
+
+function showScorePop() {
+  const pop = document.createElement("div");
+  pop.className = "score-pop";
+  pop.textContent = "+1";
+  document.body.appendChild(pop);
+  pop.addEventListener("animationend", () => {
+    pop.remove();
+  });
+}
+
+// --- 排行榜 ---
+
+function bindLeaderboardControls() {
+  document.getElementById("leaderboard-toggle").addEventListener("click", toggleLeaderboard);
+  document.getElementById("leaderboard-close").addEventListener("click", closeLeaderboard);
+}
+
+function toggleLeaderboard() {
+  if (leaderboardOpen) {
+    closeLeaderboard();
+    return;
+  }
+  openLeaderboard();
+}
+
+async function openLeaderboard() {
+  leaderboardOpen = true;
+  document.getElementById("leaderboard-panel").hidden = false;
+  try {
+    const resp = await fetch("/api/leaderboard/online");
+    if (!resp.ok) {
+      return;
+    }
+    const data = await resp.json();
+    renderLeaderboard(data);
+  } catch {
+    // 网络错误忽略
+  }
+}
+
+function closeLeaderboard() {
+  leaderboardOpen = false;
+  document.getElementById("leaderboard-panel").hidden = true;
+}
+
+function renderLeaderboard(data) {
+  const list = document.getElementById("leaderboard-list");
+  list.innerHTML = "";
+  for (const entry of data.top || []) {
+    const li = document.createElement("li");
+    li.className = "leaderboard-panel__item";
+    li.innerHTML = `<span class="leaderboard-panel__name">${escHtml(entry.username || "?")}</span><span class="leaderboard-panel__score">${entry.score}</span>`;
+    list.appendChild(li);
+  }
+
+  const selfEl = document.getElementById("leaderboard-self");
+  if (data.self) {
+    selfEl.textContent = `我的排名: ${data.self.rank}  分数: ${data.self.score}`;
+  } else {
+    selfEl.textContent = "你不在线";
+  }
+}
+
+function escHtml(str) {
+  const div = document.createElement("div");
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
+
+// --- 拾取控件绑定 ---
+
+function bindPickupControls() {
+  document.getElementById("pickup-btn").addEventListener("click", performPickup);
+
+  window.addEventListener("keydown", (event) => {
+    if (isEditingInput()) {
+      return;
+    }
+    if (event.key === "j" || event.key === "J") {
+      event.preventDefault();
+      performPickup();
+    }
+  });
+}
+
+// --- 重置 ---
+
+function clearRegionCircles() {
+  for (const circle of regionCircles) {
+    circle.remove();
+  }
+  regionCircles.length = 0;
+}
+
+function resetCollectibleUI() {
+  clearRegionCircles();
+  collectibleRegions = [];
+  for (const [, gem] of collectibleGems) {
+    gem.marker.remove();
+  }
+  collectibleGems.clear();
+  targetCollectibleId = null;
+  authoritativeScore = 0;
+  pickupCooldownUntil = 0;
+  document.getElementById("score-display").style.display = "none";
+  document.getElementById("pickup-btn").disabled = true;
+  closeLeaderboard();
+  document.getElementById("leaderboard-toggle").style.display = "none";
+}
+
+// --- 工具函数 ---
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 async function logout() {
@@ -381,6 +731,7 @@ async function logout() {
   currentUserId = null;
   currentUsername = null;
   resetAccountUI();
+  resetCollectibleUI();
   markers.forEach((entry) => entry.marker.remove());
   markers.clear();
   setStatus("disconnected");
@@ -487,41 +838,6 @@ function renderVisibleEntitiesSnapshot(players) {
       continue;
     }
     upsertPlayerFromSnapshot(player);
-  }
-}
-
-function applyReplicationUpdate(message) {
-  const leftIds = new Set(message.leftPlayerIds || []);
-
-  for (const playerId of leftIds) {
-    if (playerId !== currentUserId) {
-      removePlayerMarker(playerId);
-    }
-  }
-
-  if (message.selfPosition) {
-    updateSelfPosition(message.selfPosition);
-  }
-
-  for (const player of message.entered || []) {
-    if (player.id === currentUserId || leftIds.has(player.id)) {
-      continue;
-    }
-    upsertPlayerFromSnapshot(player);
-  }
-
-  for (const position of message.positions || []) {
-    if (position.id === currentUserId || leftIds.has(position.id)) {
-      continue;
-    }
-    updatePlayerPosition(position);
-  }
-
-  for (const update of message.appearances || []) {
-    if (leftIds.has(update.playerId)) {
-      continue;
-    }
-    renderAppearanceChanged(update.playerId, update.appearance);
   }
 }
 

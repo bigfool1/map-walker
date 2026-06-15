@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Map Walker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
-    <link rel="stylesheet" href="/styles.css?v=4">
+    <link rel="stylesheet" href="/styles.css?v=5">
   </head>
   <body>
     <main id="map" aria-label="Map Walker play area"></main>
@@ -62,12 +62,24 @@
       </div>
     </div>
     <div id="status" class="status status--connecting">连接中</div>
+    <div id="score-display" class="score-display" style="display:none">
+      <span class="score-display__label">分数</span>
+      <span id="score-value">0</span>
+    </div>
+    <button id="leaderboard-toggle" class="leaderboard-toggle" style="display:none" title="在线排行">排行</button>
+    <div id="leaderboard-panel" class="leaderboard-panel" hidden>
+      <button id="leaderboard-close" class="leaderboard-panel__close" aria-label="关闭">&times;</button>
+      <div class="leaderboard-panel__title">在线排行</div>
+      <ul id="leaderboard-list" class="leaderboard-panel__list"></ul>
+      <div id="leaderboard-self" class="leaderboard-panel__self"></div>
+    </div>
+    <button id="pickup-btn" class="pickup-btn" disabled title="拾取 (J)">拾</button>
     <div class="joystick" aria-label="Movement joystick">
       <div class="joystick__base">
         <div class="joystick__knob"></div>
       </div>
     </div>
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
-    <script src="/app.js?v=5"></script>
+    <script src="/app.js?v=6"></script>
   </body>
 </html>
