@@ -22,27 +22,9 @@
         <a href="#" id="auth-toggle-link">注册</a>
       </p>
     </div>
-    <div id="account-ctrl" class="account-ctrl" style="display:none">
-      <button
-        id="account-menu-trigger"
-        class="account-ctrl__trigger"
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-controls="account-menu"
-      >
-        <span id="account-trigger-preview" class="appearance-preview appearance-preview--sm" aria-hidden="true">
-          <span class="player-marker__shape"></span>
-        </span>
-        <span id="account-username"></span>
-        <span class="account-ctrl__chevron" aria-hidden="true"></span>
-      </button>
-      <div id="account-menu" class="account-menu" role="menu" hidden>
-        <button id="account-edit-appearance" class="account-menu__item" type="button" role="menuitem">更改外观</button>
-        <button id="account-logout" class="account-menu__item" type="button" role="menuitem">退出</button>
-      </div>
-      <div id="appearance-editor" class="appearance-editor" hidden>
-        <h3 class="appearance-editor__title">外观</h3>
+    <div id="appearance-modal-overlay" class="modal-overlay" hidden>
+      <div id="appearance-modal" class="appearance-modal" role="dialog" aria-modal="true" aria-labelledby="appearance-modal-title">
+        <h2 id="appearance-modal-title">更改外观</h2>
         <div id="appearance-editor-preview" class="appearance-preview appearance-preview--lg" aria-hidden="true">
           <span class="player-marker__shape"></span>
         </div>
@@ -61,12 +43,35 @@
         </div>
       </div>
     </div>
+    <div class="top-bar">
+      <button id="leaderboard-toggle" class="leaderboard-toggle" style="display:none" title="在线排行">排行</button>
+      <div id="account-ctrl" class="account-ctrl" style="display:none">
+        <button
+          id="account-menu-trigger"
+          class="account-ctrl__trigger"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="account-menu"
+        >
+          <span id="account-trigger-preview" class="appearance-preview appearance-preview--sm" aria-hidden="true">
+            <span class="player-marker__shape"></span>
+          </span>
+          <span id="account-username"></span>
+          <span class="account-ctrl__chevron" aria-hidden="true"></span>
+        </button>
+        <div id="account-menu" class="account-menu" role="menu" hidden>
+          <button id="account-edit-appearance" class="account-menu__item" type="button" role="menuitem">更改外观</button>
+          <button id="account-logout" class="account-menu__item" type="button" role="menuitem">退出</button>
+        </div>
+      </div>
+    </div>
     <div id="status" class="status status--connecting">连接中</div>
     <div id="score-display" class="score-display" style="display:none">
       <span class="score-display__label">分数</span>
       <span id="score-value">0</span>
     </div>
-    <button id="leaderboard-toggle" class="leaderboard-toggle" style="display:none" title="在线排行">排行</button>
+    <div id="key-hints" class="key-hints" style="display:none">WASD / 方向键 移动，J 拾取</div>
     <div id="leaderboard-panel" class="leaderboard-panel" hidden>
       <button id="leaderboard-close" class="leaderboard-panel__close" aria-label="关闭">&times;</button>
       <div class="leaderboard-panel__title">在线排行</div>

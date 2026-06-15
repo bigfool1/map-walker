@@ -14,6 +14,8 @@ let menuOpen = false;
 let editorOpen = false;
 let savingAppearance = false;
 let authMode = "login";
+let showWelcomeAppearance = false;
+let appearanceModalMode = "edit";
 const markers = new Map();
 const input = {
   up: false,
@@ -103,6 +105,7 @@ function showAuthCard() {
   document.getElementById("auth-card").style.display = "";
   document.getElementById("status").style.display = "none";
   document.querySelector(".joystick").style.display = "none";
+  document.getElementById("key-hints").style.display = "none";
   document.getElementById("auth-error").textContent = "";
 }
 
@@ -119,6 +122,7 @@ function hideAuthCard() {
   document.getElementById("status").style.display = "";
   document.querySelector(".joystick").style.display = "";
   document.getElementById("leaderboard-toggle").style.display = "";
+  document.getElementById("key-hints").style.display = "";
   updatePickupButton();
 }
 
@@ -139,6 +143,8 @@ function resetAccountUI() {
   menuOpen = false;
   editorOpen = false;
   savingAppearance = false;
+  showWelcomeAppearance = false;
+  appearanceModalMode = "edit";
   authoritativeAppearance = { ...DEFAULT_APPEARANCE };
   draftAppearance = { ...DEFAULT_APPEARANCE };
   closeAccountMenu();
@@ -197,12 +203,28 @@ function toggleAccountMenu() {
 
 function openAppearanceEditor() {
   closeAccountMenu();
+  openAppearanceModal("edit");
+}
+
+function openAppearanceModal(mode) {
+  appearanceModalMode = mode;
   editorOpen = true;
   draftAppearance = {
     color: authoritativeAppearance.color,
     shape: authoritativeAppearance.shape,
   };
-  document.getElementById("appearance-editor").hidden = false;
+
+  const titleEl = document.getElementById("appearance-modal-title");
+  const cancelBtn = document.getElementById("appearance-cancel");
+  if (mode === "welcome") {
+    titleEl.textContent = "欢迎，" + (currentUsername || "") + "！选择你的外观";
+    cancelBtn.textContent = "稍后再说";
+  } else {
+    titleEl.textContent = "更改外观";
+    cancelBtn.textContent = "取消";
+  }
+
+  document.getElementById("appearance-modal-overlay").hidden = false;
   document.getElementById("appearance-error").textContent = "";
   syncAppearanceEditorControls();
   renderAppearancePreview(
@@ -213,9 +235,10 @@ function openAppearanceEditor() {
 
 function closeAppearanceEditor() {
   editorOpen = false;
-  document.getElementById("appearance-editor").hidden = true;
+  document.getElementById("appearance-modal-overlay").hidden = true;
   document.getElementById("appearance-error").textContent = "";
   setSaveAppearanceEnabled(true);
+  document.getElementById("appearance-cancel").textContent = "取消";
 }
 
 function syncAppearanceEditorControls() {
@@ -320,6 +343,11 @@ async function handleAuthSubmit(event) {
   currentUserId = data.userId;
   currentUsername = data.username;
   setAuthoritativeAppearance(data.appearance || DEFAULT_APPEARANCE);
+
+  if (authMode === "register") {
+    showWelcomeAppearance = true;
+  }
+
   hideAuthCard();
   showAccountControl();
   shouldReconnect = true;
@@ -400,6 +428,11 @@ function handleSelfState(message) {
   selfPosition.lat = message.player.lat;
   selfPosition.lng = message.player.lng;
   updateTargetSelection();
+
+  if (showWelcomeAppearance) {
+    showWelcomeAppearance = false;
+    openAppearanceModal("welcome");
+  }
 }
 
 function handleCollectibleRegions(message) {
@@ -1130,6 +1163,7 @@ function bindAccountControls() {
   });
 
   document.getElementById("account-edit-appearance").addEventListener("click", () => {
+    closeAccountMenu();
     openAppearanceEditor();
   });
   document.getElementById("account-logout").addEventListener("click", logout);
@@ -1156,9 +1190,6 @@ function bindAccountControls() {
     const account = document.getElementById("account-ctrl");
     if (!account.contains(event.target)) {
       closeAccountMenu();
-      if (editorOpen) {
-        closeAppearanceEditor();
-      }
     }
   });
 
@@ -1170,6 +1201,17 @@ function bindAccountControls() {
       }
     }
   });
+
+  document
+    .getElementById("appearance-modal-overlay")
+    .addEventListener("click", (event) => {
+      if (event.target === document.getElementById("appearance-modal-overlay")) {
+        if (appearanceModalMode === "edit") {
+          cancelAppearanceEdit();
+        }
+        // welcome 模式下点击遮罩不关闭，用户必须用按钮
+      }
+    });
 }
 
 window.mapWalker = { logout };

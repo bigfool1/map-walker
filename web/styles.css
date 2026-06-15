@@ -122,11 +122,18 @@ body {
   text-decoration: underline;
 }
 
-.account-ctrl {
+.top-bar {
   position: fixed;
   top: 8vh;
   right: 16px;
-  z-index: 1000;
+  z-index: 1001;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.account-ctrl {
+  position: relative;
   color: #1b1f23;
   font-size: 14px;
 }
@@ -135,6 +142,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  max-width: 240px;
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 8px;
   padding: 4px 10px;
@@ -144,6 +152,12 @@ body {
   font-weight: 650;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+#account-username {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account-ctrl__trigger:hover,
@@ -204,22 +218,36 @@ body {
   outline: none;
 }
 
-.appearance-editor {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 220px;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 14px;
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.appearance-editor__title {
-  margin: 0 0 12px;
-  font-size: 15px;
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.appearance-modal {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 28px 24px 16px;
+  width: 280px;
+  max-width: calc(100vw - 40px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+#appearance-modal-title {
+  margin: 0 0 16px;
+  font-size: 18px;
   font-weight: 700;
+  text-align: center;
+  color: #1b1f23;
 }
 
 .appearance-editor__shapes {
@@ -527,6 +555,18 @@ body {
   100% { opacity: 0; transform: translate(-50%, -120%) scale(0.8); }
 }
 
+.key-hints {
+  position: fixed;
+  top: 88px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: #888;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .pickup-btn {
   position: fixed;
   right: 20px;
@@ -638,10 +678,6 @@ body {
 }
 
 .leaderboard-toggle {
-  position: fixed;
-  top: 8vh;
-  right: 164px;
-  z-index: 1001;
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 8px;
   padding: 4px 10px;
@@ -651,6 +687,7 @@ body {
   font-weight: 650;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  white-space: nowrap;
 }
 
 .leaderboard-toggle:hover {
