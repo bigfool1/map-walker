@@ -13,6 +13,19 @@ RUN go mod download
 # 复制源码并编译
 COPY . .
 RUN go build -ldflags="-s -w" -o map-walker ./cmd/map-walker
+RUN go build -ldflags="-s -w" -o tester ./cmd/tester
+
+# ===== Tester Stage =====
+FROM alpine:3.21 AS tester
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/tester .
+
+ENTRYPOINT ["./tester"]
+CMD ["-target", "100", "-ramp-rate", "10", "-host", "map-walker", "-port", "8080"]
 
 # ===== Final Stage =====
 FROM alpine:3.21
