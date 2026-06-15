@@ -115,17 +115,28 @@ func (c *Client) readLoop(ctx context.Context) {
 			return
 		}
 
-		var message InputMessage
-		if err := json.Unmarshal(data, &message); err != nil {
+		// 尝试解析 input 消息
+		var inputMsg InputMessage
+		if err := json.Unmarshal(data, &inputMsg); err != nil {
 			log.Printf("decode websocket message failed: %v", err)
 			continue
 		}
-		if message.Type != MessageTypeInput {
+		if inputMsg.Type == MessageTypeInput {
+			if ok := c.hub.ApplyInput(c, inputMsg.InputState()); !ok {
+				return
+			}
 			continue
 		}
 
-		if ok := c.hub.ApplyInput(c, message.InputState()); !ok {
-			return
+		// 尝试解析 collect 消息
+		var collectMsg CollectMessage
+		if err := json.Unmarshal(data, &collectMsg); err != nil {
+			log.Printf("decode websocket message failed: %v", err)
+			continue
+		}
+		if collectMsg.Type == MessageTypeCollect {
+			c.hub.SubmitCollect(c, collectMsg.CollectibleID)
+			continue
 		}
 	}
 }

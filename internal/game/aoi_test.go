@@ -8,7 +8,7 @@ import (
 func TestAOIOriginConversionAndCellCoordinates(t *testing.T) {
 	config := AOIConfigFromWorld(testConfig())
 
-	localX, localY := config.latLngToLocal(config.OriginLat, config.OriginLng)
+	localX, localY := config.LatLngToLocal(config.OriginLat, config.OriginLng)
 	if localX != 0 || localY != 0 {
 		t.Fatalf("origin local coords = (%v, %v), want (0, 0)", localX, localY)
 	}
@@ -27,7 +27,7 @@ func TestAOIOriginConversionAndCellCoordinates(t *testing.T) {
 	}
 
 	lat, lng := config.LocalToLatLng(300, -400)
-	roundTripX, roundTripY := config.latLngToLocal(lat, lng)
+	roundTripX, roundTripY := config.LatLngToLocal(lat, lng)
 	if !almostEqualLocal(roundTripX, 300) || !almostEqualLocal(roundTripY, -400) {
 		t.Fatalf("round trip local coords = (%v, %v), want (300, -400)", roundTripX, roundTripY)
 	}

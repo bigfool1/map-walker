@@ -104,7 +104,7 @@ func (a *AOIIndex) VisibleNeighbors(playerID int64) []int64 {
 // QueryPlayerIDsNearPoint 返回指定点周围九格内的所有玩家 ID
 // 用于收集品反向扇出（spawn/collect 通知附近玩家）
 func (a *AOIIndex) QueryPlayerIDsNearPoint(lat, lng float64) []int64 {
-	localX, localY := a.config.latLngToLocal(lat, lng)
+	localX, localY := a.config.LatLngToLocal(lat, lng)
 	centerCell := a.config.localToCell(localX, localY)
 
 	var ids []int64
@@ -175,7 +175,7 @@ func (a *AOIIndex) Remove(playerID int64) RelationshipChanges {
 }
 
 func (a *AOIIndex) setPosition(playerID int64, lat, lng float64) {
-	localX, localY := a.config.latLngToLocal(lat, lng)
+	localX, localY := a.config.LatLngToLocal(lat, lng)
 	cell := a.config.localToCell(localX, localY)
 
 	if existing, ok := a.players[playerID]; ok {
@@ -319,7 +319,7 @@ func (a *AOIIndex) distanceSquared(aPlayer, bPlayer *aoiPlayer) float64 {
 	return dx*dx + dy*dy
 }
 
-func (c AOIConfig) latLngToLocal(lat, lng float64) (localX, localY float64) {
+func (c AOIConfig) LatLngToLocal(lat, lng float64) (localX, localY float64) {
 	localY = (lat - c.OriginLat) * metersPerDegreeLatitude
 	localX = (lng - c.OriginLng) * metersPerDegreeLongitude(c.OriginLat)
 	return localX, localY

@@ -195,7 +195,7 @@ func (f *CollectibleField) randomPointInCircle(centerLat, centerLng, radiusMeter
 	localX := r * math.Cos(theta)
 	localY := r * math.Sin(theta)
 
-	cx, cy := f.aoiConfig.latLngToLocal(centerLat, centerLng)
+	cx, cy := f.aoiConfig.LatLngToLocal(centerLat, centerLng)
 	return f.aoiConfig.LocalToLatLng(cx+localX, cy+localY)
 }
 
@@ -212,8 +212,8 @@ func (f *CollectibleField) hasNearbyCollectible(lat, lng, radiusMeters float64) 
 }
 
 func (f *CollectibleField) distanceSq(lat1, lng1, lat2, lng2 float64) float64 {
-	x1, y1 := f.aoiConfig.latLngToLocal(lat1, lng1)
-	x2, y2 := f.aoiConfig.latLngToLocal(lat2, lng2)
+	x1, y1 := f.aoiConfig.LatLngToLocal(lat1, lng1)
+	x2, y2 := f.aoiConfig.LatLngToLocal(lat2, lng2)
 	dx := x1 - x2
 	dy := y1 - y2
 	return dx*dx + dy*dy
@@ -233,19 +233,19 @@ func newCollectibleGrid(aoiConfig AOIConfig) *collectibleGrid {
 }
 
 func (g *collectibleGrid) insert(id uint64, lat, lng float64) {
-	localX, localY := g.aoiConfig.latLngToLocal(lat, lng)
+	localX, localY := g.aoiConfig.LatLngToLocal(lat, lng)
 	cell := g.aoiConfig.localToCell(localX, localY)
 	g.addToCell(id, cell)
 }
 
 func (g *collectibleGrid) remove(id uint64, lat, lng float64) {
-	localX, localY := g.aoiConfig.latLngToLocal(lat, lng)
+	localX, localY := g.aoiConfig.LatLngToLocal(lat, lng)
 	cell := g.aoiConfig.localToCell(localX, localY)
 	g.removeFromCell(id, cell)
 }
 
 func (g *collectibleGrid) candidateIDs(lat, lng float64) []uint64 {
-	localX, localY := g.aoiConfig.latLngToLocal(lat, lng)
+	localX, localY := g.aoiConfig.LatLngToLocal(lat, lng)
 	centerCell := g.aoiConfig.localToCell(localX, localY)
 
 	var ids []uint64

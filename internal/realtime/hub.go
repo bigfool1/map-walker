@@ -33,6 +33,11 @@ type inputEvent struct {
 	input  game.InputState
 }
 
+type collectEvent struct {
+	client        ClientSender
+	collectibleID uint64
+}
+
 type appearanceUpdateRequest struct {
 	userID     int64
 	appearance game.Appearance
@@ -53,6 +58,8 @@ type Hub struct {
 	pendingCollectLeftIDs    map[int64][]uint64
 	pendingCollectSpawned    map[int64][]CollectibleSpawnedItem
 	pendingCollectCollected  map[int64][]uint64
+	collectCooldowns         map[int64]time.Time
+	collects                 chan collectEvent
 	register                 chan ClientSender
 	unregister         chan ClientSender
 	inputs             chan inputEvent
@@ -74,6 +81,14 @@ type Hub struct {
 	stopTickers        func()
 	stats              intervalStats
 	snapshot           atomic.Pointer[HubSnapshot]
+}
+
+// SubmitCollect 提交拾取意图到 Hub actor（非阻塞）
+func (h *Hub) SubmitCollect(client ClientSender, collectibleID uint64) {
+	select {
+	case h.collects <- collectEvent{client: client, collectibleID: collectibleID}:
+	default:
+	}
 }
 
 func (h *Hub) Snapshot() *HubSnapshot {
@@ -148,6 +163,8 @@ func newHub(
 		pendingCollectLeftIDs:   map[int64][]uint64{},
 		pendingCollectSpawned:   map[int64][]CollectibleSpawnedItem{},
 		pendingCollectCollected: map[int64][]uint64{},
+		collectCooldowns:        map[int64]time.Time{},
+		collects:                make(chan collectEvent),
 		register:                make(chan ClientSender),
 		unregister:         make(chan ClientSender),
 		inputs:             make(chan inputEvent),
@@ -207,6 +224,8 @@ func (h *Hub) Run() {
 			close(req.done)
 		case req := <-h.appearanceUpdates:
 			h.applyAppearanceUpdate(req)
+		case evt := <-h.collects:
+			h.processCollect(evt)
 		case <-h.stop:
 			for _, client := range h.clients {
 				h.submitFinalPosition(client.ID())
@@ -214,10 +233,16 @@ func (h *Hub) Run() {
 			if d, ok := h.persister.(PositionDrainer); ok {
 				d.Drain()
 			}
+			if h.scorePersister != nil {
+				h.scorePersister.Drain()
+			}
 			for _, client := range h.clients {
 				client.CloseSend()
 			}
 			return
+		}
+		if h.scorePersister != nil {
+			h.scorePersister.Drain()
 		}
 	}
 }
@@ -533,6 +558,94 @@ func (h *Hub) sendInitialization(client ClientSender) {
 		}
 		h.visibleCollectibleIDs[client.ID()] = visible
 	}
+}
+
+const collectCooldown = 300 * time.Millisecond
+
+// processCollect 在 Hub actor 内串行处理拾取请求
+func (h *Hub) processCollect(evt collectEvent) {
+	client := evt.client
+	playerID := client.ID()
+
+	// 连接必须仍然是当前连接
+	if h.clients[playerID] != client {
+		return
+	}
+
+	// 合成账户不能拾取
+	if _, synthetic := h.syntheticPlayerIDs[playerID]; synthetic {
+		return
+	}
+
+	// 服务端冷却
+	now := time.Now()
+	if last, ok := h.collectCooldowns[playerID]; ok && now.Sub(last) < collectCooldown {
+		return
+	}
+	h.collectCooldowns[playerID] = now
+
+	// 收集品必须存在且对玩家可见
+	if h.collectibleField == nil {
+		return
+	}
+	collectible, ok := h.collectibleField.Collectible(evt.collectibleID)
+	if !ok {
+		return
+	}
+	visibleIDs := h.visibleCollectibleIDs[playerID]
+	if _, visible := visibleIDs[collectible.ID]; !visible {
+		return
+	}
+
+	// 权威距离检查（10 米内）
+	playerPos, ok := h.world.PlayerPosition(playerID)
+	if !ok {
+		return
+	}
+	dx, dy := h.collectibleLocalDiff(playerPos.Lat, playerPos.Lng, collectible.Lat, collectible.Lng)
+	if dx*dx+dy*dy > 100 { // 10米²
+		return
+	}
+
+	// 移除收集品并调度替换
+	if !h.collectibleField.Remove(evt.collectibleID) {
+		return
+	}
+
+	// 增加分数并异步持久化
+	h.playerScores[playerID]++
+	newScore := h.playerScores[playerID]
+	if h.scorePersister != nil {
+		h.scorePersister.Submit(ScoreUpdate{UserID: playerID, Score: newScore})
+	}
+
+	// 发送 collect_result 仅给获胜者
+	resultData, err := EncodeCollectResult(evt.collectibleID, newScore)
+	if err != nil {
+		log.Printf("encode collect result failed: %v", err)
+		return
+	}
+	client.Send(resultData)
+
+	// 反向扇出：从可见玩家中移除已被拾取的收集品
+	nearbyPlayerIDs := h.aoi.QueryPlayerIDsNearPoint(collectible.Lat, collectible.Lng)
+	for _, nearbyID := range nearbyPlayerIDs {
+		if _, connected := h.clients[nearbyID]; !connected {
+			continue
+		}
+		if vis, ok := h.visibleCollectibleIDs[nearbyID]; ok {
+			delete(vis, collectible.ID)
+		}
+		h.pendingCollectCollected[nearbyID] = append(h.pendingCollectCollected[nearbyID], evt.collectibleID)
+	}
+}
+
+// collectibleLocalDiff 计算两点局部坐标差
+func (h *Hub) collectibleLocalDiff(lat1, lng1, lat2, lng2 float64) (dx, dy float64) {
+	aoiConfig := game.AOIConfigFromWorld(h.world.Config())
+	x1, y1 := aoiConfig.LatLngToLocal(lat1, lng1)
+	x2, y2 := aoiConfig.LatLngToLocal(lat2, lng2)
+	return x1 - x2, y1 - y2
 }
 
 // advanceCollectibleReplacements 推进到期替换，反向扇出生成通知

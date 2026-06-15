@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"math/rand/v2"
+
 	"map-walker/internal/game"
 )
 
@@ -1915,4 +1917,137 @@ func TestHubSnapshotAfterStop(t *testing.T) {
 	if snap.ConnectedClients != 1 {
 		t.Errorf("ConnectedClients=%d want 1", snap.ConnectedClients)
 	}
+}
+
+func testRegionsForPickup() []game.CollectibleRegion {
+	return []game.CollectibleRegion{
+		{ID: "region-1", CenterLat: 31.2304, CenterLng: 121.4737, RadiusMeters: 5, TargetCount: 1, RespawnMin: 5 * time.Second, RespawnMax: 10 * time.Second},
+	}
+}
+
+func newTestHubWithCollectibles() (*Hub, chan time.Time, chan time.Time, chan time.Time) {
+	config := testWorldConfig()
+	world := game.NewWorld(config)
+	regions := testRegionsForPickup()
+	rng := rand.New(rand.NewPCG(0, 0))
+	field := game.NewCollectibleField(game.AOIConfigFromWorld(config), regions, nil, rng)
+	field.Populate()
+
+	simulations := make(chan time.Time, 8)
+	broadcasts := make(chan time.Time, 8)
+	persistence := make(chan time.Time, 8)
+	statsTick := make(chan time.Time, 8)
+
+	hub := newHub(world, nil, nil, field, nil, simulations, broadcasts, persistence, statsTick, func() {})
+	return hub, simulations, broadcasts, persistence
+}
+
+func TestHubCollectPickupSuccess(t *testing.T) {
+	hub, _, _, _ := newTestHubWithCollectibles()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	if !hub.Register(alice) {
+		t.Fatal("register failed")
+	}
+	mustReceiveInitialization(t, alice)
+
+	// 获取初始化后可见的收集品
+	pos, _ := hub.world.PlayerPosition(1001)
+	collectibles := hub.collectibleField.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
+	if len(collectibles) == 0 {
+		t.Skip("10m 内无收集品，跳过拾取测试")
+	}
+
+	// 发送拾取请求
+	hub.SubmitCollect(alice, collectibles[0].ID)
+
+	// 验证收到 collect_result
+	data := mustReceiveData(t, alice)
+	var result CollectResultMessage
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("decode collect_result failed: %v (%s)", err, string(data))
+	}
+	if result.Type != MessageTypeCollectResult || result.Score != 1 {
+		t.Fatalf("unexpected collect_result: %+v", result)
+	}
+}
+
+func TestHubCollectCooldown(t *testing.T) {
+	hub, _, _, _ := newTestHubWithCollectibles()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	pos, _ := hub.world.PlayerPosition(1001)
+	collectibles := hub.collectibleField.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
+	if len(collectibles) == 0 {
+		t.Skip("10m 内无收集品")
+	}
+
+	// 第一次拾取
+	hub.SubmitCollect(alice, collectibles[0].ID)
+	_ = mustReceiveData(t, alice) // collect_result
+
+	// 立即第二次拾取同一 ID（应被冷却拒绝）
+	hub.SubmitCollect(alice, collectibles[0].ID)
+	assertNoMessage(t, alice)
+}
+
+func TestHubCollectSyntheticRejection(t *testing.T) {
+	hub, _, _, _ := newTestHubWithCollectibles()
+	go hub.Run()
+	defer hub.Stop()
+
+	hub.syntheticPlayerIDs[1001] = struct{}{}
+
+	alice := NewTestClient(1001, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	pos, _ := hub.world.PlayerPosition(1001)
+	collectibles := hub.collectibleField.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
+	if len(collectibles) == 0 {
+		t.Skip("10m 内无收集品")
+	}
+
+	hub.SubmitCollect(alice, collectibles[0].ID)
+	assertNoMessage(t, alice)
+}
+
+func TestHubCollectStaleID(t *testing.T) {
+	hub, _, _, _ := newTestHubWithCollectibles()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	// 提交不存在的收集品 ID
+	hub.SubmitCollect(alice, 99999)
+	// 不应 crash 或发送结果
+}
+
+func TestHubCollectObsoleteConnection(t *testing.T) {
+	hub, _, _, _ := newTestHubWithCollectibles()
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	// 注册替换连接
+	replacement := NewTestClient(1001, 8)
+	hub.Register(replacement)
+	mustReceiveInitialization(t, replacement)
+
+	// 通过旧连接发送拾取（应被忽略）
+	hub.SubmitCollect(alice, 1)
+	// 不应 crash
 }
