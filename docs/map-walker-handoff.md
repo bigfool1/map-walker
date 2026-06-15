@@ -10,9 +10,89 @@ Design docs and plans are in `docs/superpowers/specs/` and
 
 **Most recently completed plan:**
 `docs/superpowers/plans/2026-06-15-persistent-collectible-world.md` — all 11
-tasks done. Collectible field, score persistence, protocol freeze, Hub
-integration, AOI replication, authoritative pickup, leaderboard, frontend,
-scale regression, and documentation.
+tasks done.
+
+### Collectible field (`internal/game/`)
+
+- `CollectibleField` — pure-logic, no goroutine/lock/DB. 600m grid spatial index,
+  monotonic process-local IDs, per-region target populations.
+- `CollectibleRegion`, `Collectible` exported types. Deterministic `timeNow`/`rng`
+  seams for tests.
+- Three fixed 200m-radius circular regions in Shanghai, 20 collectibles each.
+  `config/collectible-regions.json`, `-collectible-regions` flag. Validates count,
+  coordinates, radius, respawn bounds, overlap at startup.
+- Pickup removes immediately; replacement scheduled after random 5-15s delay.
+  Placement retries bounded (accepts last valid in-region position if all too close).
+
+### Score persistence (`internal/storage/`)
+
+- Migration `002_collectibles.sql`: `collectible_score BIGINT DEFAULT 0`,
+  `is_synthetic BOOLEAN DEFAULT FALSE`.
+- `ScorePersister` — single-goroutine worker, pending-map coalescing (highest
+  score wins), exponential backoff retry (cap 30s). Async `Submit` for pickups,
+  sync `SubmitSync`/`Drain` for disconnect/shutdown.
+- `SaveScore`: `GREATEST` (MySQL) / `MAX` (SQLite) monotonic idempotent update.
+  `RowsAffected == 0` is success.
+
+### Synthetic identity
+
+- `is_synthetic` is a persistent, server-trusted DB column. Queried by marker
+  (not username prefix). `CorrectSyntheticMarkers` fixes pre-migration accounts.
+- `auth.User` carries `IsSynthetic` → WebSocket → Hub. Client cannot control.
+- Synthetic players move and are visible, but cannot collect items or appear in
+  leaderboard rankings.
+
+### Protocol (frozen before Hub changes)
+
+- C→S: `collect` (`{"type":"collect","collectibleId":123}`)
+- S→C init: `self_state` extended with `score`; `collectible_regions` (public
+  geometry only); `visible_collectibles_snapshot`. Always 4 init messages.
+- S→C replication: `collectiblesEntered`, `collectibleIdsLeft`,
+  `collectiblesSpawned`, `collectibleIdsCollected` in `replication_update`.
+- S→C winner: `collect_result` (`{"type":"collect_result","collectibleId":123,"score":42}`)
+- Normalization: left > entered, collected > spawned (prevents contradictions).
+
+### Hub integration (`internal/realtime/`)
+
+- Collectible visibility tracked per-client with 500/600m hysteresis.
+- `recalcCollectibleVisibility` only for moved players (not all-player scan).
+- `advanceCollectibleReplacements` from Hub tick; reverse fan-out via
+  `AOIIndex.QueryPlayerIDsNearPoint` (9-cell scan, not all players).
+- `processCollect` in Hub actor (serial): validates connection, synthetic reject,
+  300ms cooldown, existence, visibility, ≤10m distance. No DB call in path.
+- Score incremented in-memory; persistence is async. Sync submit + drain on
+  disconnect/logout/shutdown.
+
+### Leaderboard
+
+- `GET /api/leaderboard/online` — session auth, GET only.
+- Hub actor builds ranking on demand: iterates online clients, filters synthetic,
+  sorts by score desc + playerID asc. Returns Top 5 + self (rank + score).
+- `self` omitted when requester is not connected. No cache/poll/push.
+
+### Frontend (`web/`)
+
+- Three translucent gold dashed region circles (Leaflet, non-interactive).
+- Gold glowing gem markers (`divIcon`, radial gradient + box-shadow).
+- Nearest-target selection (haversine ≤10m), highlighted with larger glow.
+- `J` key and circular touch button share 300ms client cooldown.
+- `collect_result` triggers `+1` pop animation and score display update.
+- Leaderboard panel: hidden by default, fetches once on open, Top 5 + self rank.
+- Full reset on logout/reconnect (regions, gems, score, leaderboard).
+
+### Scale regression
+
+- `collectible_scale_test.go` — 200-player deterministic scenario, 3 regions,
+  60 collectibles. Proves AOI metrics identical with/without collectibles
+  (no O(P×C) scan).
+
+### What was NOT implemented
+
+- Persistent collectible instances across restarts (scores persist, items reset).
+- Inventory, item abilities, rounds, or score decay.
+- Global leaderboard with offline users. Auto-refresh or push updates.
+- Runtime region editing or config reload. Multi-process coordination.
+- Zero-loss score durability (process kill may lose unpersisted points).
 
 ## Quick Start & Test
 
