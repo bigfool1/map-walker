@@ -71,6 +71,7 @@ MAP_WALKER_ADMIN_TOKEN=secret go run ./cmd/map-walker -synthetic-clients 50
 - 不确定时先问，不要猜
 - Hub tick 测试的并发陷阱见 [docs/concurrency-debugging.md](docs/concurrency-debugging.md)
 - 数据库迁移文件按序号命名，仅向前迁移
+- `docs/map-walker-handoff.md` 保持精简（~100 行）：只写当前项目状态、目录布局、核心约定、API 表、flags、已知限制。**不积累历史 phase 详情**——那些在 git log 和 `docs/superpowers/` 里。每次完成一个 plan 后，更新 handoff 开头「最近完成的 plan」引用即可
 
 ## Multi-Agent 协作指引
 
