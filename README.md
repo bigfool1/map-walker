@@ -3,8 +3,9 @@
 A small server-authoritative multiplayer movement demo built with Go and
 Leaflet. Browsers register an account, then send keyboard or touch input; the Go
 server owns player positions, simulates movement at 20 Hz, replicates visible
-changes at 10 Hz via a grid-based AOI spatial index, and persists positions to
-SQLite every 5 seconds.
+changes at 10 Hz via a grid-based AOI spatial index, and persists positions every
+5 seconds. MySQL is the production target backend; SQLite is retained for local
+development and testing.
 
 ## Quick Start
 
@@ -85,8 +86,11 @@ cookie.
 
 Every 5 seconds the Hub submits only moved players to a background
 `PersistenceWorker` which writes to the database via a dedicated goroutine —
-simulation and broadcasts are never blocked. Genuine disconnects and logout
-trigger a synchronous final save. On reconnect, the saved position is restored.
+simulation and broadcasts are never blocked. On MySQL, the worker collapses
+per-user updates to the highest sequence, then writes in 500-row bulk `UPDATE
+... JOIN` chunks with independent transactions per chunk. On SQLite, the worker
+uses the existing per-row update path. Genuine disconnects and logout trigger a
+synchronous final save. On reconnect, the saved position is restored.
 Same-account replacement (e.g. page refresh) keeps the in-memory position.
 
 ### Area of Interest (AOI)

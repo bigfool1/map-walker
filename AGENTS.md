@@ -47,6 +47,13 @@ MAP_WALKER_ADMIN_TOKEN=secret go run ./cmd/map-walker -synthetic-clients 50
 # 访问 http://localhost:8080/admin，输入 token
 ```
 
+## 存储后端
+
+- **MySQL 是生产目标后端**。SQLite 保留用于本地开发和测试。
+- 新的性能敏感存储特性（如批量位置持久化）不需要提供 SQLite 等价实现。
+- `internal/storage/position_batch.go`：MySQL `UPDATE ... JOIN` 批量更新，每 chunk ≤500 行，独立事务。
+- `PersistenceWorker` 按 `db.Driver()` 自动路由：MySQL 走 `applyBulk`，SQLite 走 `applyPerRow`。
+
 ## 编码约定
 
 - writing-plans时只写任务边界、行为目标、涉及模块和验证方式

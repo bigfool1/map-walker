@@ -143,6 +143,9 @@ web/                         — Leaflet UI, auth card, account menu, appearance
 - No server-side input queue — only the latest input state is applied per tick.
 - If the Hub is unavailable after a successful appearance save, online World
   state may lag the database until the user reconnects.
+- MySQL periodic position persistence uses chunked bulk updates; SQLite remains
+  per-row. SubmitSync and final-save lifecycle semantics are unchanged in this
+  phase.
 
 ## Authoritative Movement Phase
 
@@ -413,3 +416,85 @@ These are evidence for subsequent encoding, transport, or persistence phases.
 - `go vet ./...` — clean
 - Key replication tests 20× repeat — stable
 - Benchmark logical counters — identical to baseline
+
+## MySQL Position Batch Persistence Phase (Complete)
+
+Design and plan: `docs/superpowers/specs/2026-06-15-mysql-position-batch-persistence-design.md`,
+`docs/superpowers/plans/2026-06-15-mysql-position-batch-persistence.md`.
+
+### Problem
+
+Periodic position persistence used one `UPDATE users` per player, producing up
+to 4,000 serial database calls per 5-second interval. On MySQL this meant
+thousands of round trips competing with replication and tick work.
+
+### Changes
+
+- **Task 1 — sequence semantics:** 3 new `PersistenceWorker` tests freeze
+  same-batch collapse (highest seq wins), failed-save lastSeq preservation, and
+  cross-batch failure isolation. `saveRecorder` test helper with mutex-protected
+  state for race-free concurrent observation.
+- **Task 2 — MySQL bulk query:** `SavePositionChunk` in `position_batch.go`
+  executes one parameterized `UPDATE users AS u JOIN (SELECT ? AS id, ... UNION
+  ALL ...) AS positions ON positions.id = u.id SET u.last_lat = positions.lat,
+  u.last_lng = positions.lng` per ≤500-row chunk in its own transaction.
+  `RowsAffected` is not checked — chunk success is commit success.
+- **Task 3 — backend routing:** `PersistenceWorker.apply()` splits into
+  `filterAndCollapse()` (shared per-batch dedup and stale-seq filter) followed
+  by `applyBulk()` (MySQL, ≤500-row chunks, sequential, failure-continue) or
+  `applyPerRow()` (SQLite, existing per-row path). Worker goroutine count,
+  Submit/SubmitSync/Drain/Stop signatures, and Hub code unchanged.
+- **Task 4 — benchmarks:** 1,000- and 4,000-update MySQL benchmarks comparing
+  per-row baseline against chunked bulk. Chunk counts verified (2 and 8).
+- **Task 5 — documentation:** README, AGENTS, `.env.example`, and this handoff
+  updated. MySQL documented as production target; SQLite as legacy/dev.
+
+### Architecture
+
+```
+PersistenceWorker.apply(batch)
+  └─ filterAndCollapse(batch)        // per-user dedup, stale-seq filter
+       └─ accepted
+            ├─ MySQL  → applyBulk()   // split ≤500, tx per chunk, fail-continue
+            └─ SQLite → applyPerRow() // per-row SaveUserPosition, existing behavior
+```
+
+- `MaxPositionChunkSize = 500` (exported constant).
+- Each chunk: BEGIN → `UPDATE ... JOIN` → COMMIT (or ROLLBACK on failure).
+- Failed chunk does not advance `lastSeq` for any user in that chunk.
+- Worker logs one error per failed chunk (with offset and size), not per row.
+
+### Performance (Apple M5, MySQL 9.3.0, go1.26.3)
+
+| Batch | Baseline (per-row) | Optimised (chunked) | Speedup | DB calls |
+|-------|-------------------|---------------------|---------|----------|
+| 1,000 | 160.4ms | 9.3ms | **17.3×** | 1,000 → 2 |
+| 4,000 | 622.1ms | 38.8ms | **16.0×** | 4,000 → 8 |
+
+Full comparison: `docs/benchmarks/mysql-position-batch-persistence.md`.
+
+### What was NOT changed
+
+- Five-second persistence interval.
+- Hub dirty-player collection.
+- `SubmitSync` behavior, disconnect, logout, replacement, or shutdown lifecycle.
+- Final-save path (still uses `SubmitSync` → per-row or chunk depending on backend).
+- SQLite dependencies or tests.
+
+### Remaining limitations
+
+- Final saves (disconnect, logout, shutdown) still use the persistence worker
+  path; no micro-batch optimization for final saves.
+- Missing-row detection is not implemented — `RowsAffected` is not checked in
+  the chunked path.
+- No parallelism — chunks are processed sequentially in the single worker
+  goroutine.
+
+### Verification
+
+- `go test ./...` — all tests pass
+- `go test -race ./internal/storage ./internal/realtime` — no races
+- `go vet ./...` — clean
+- Key persistence tests 20× repeat — stable
+- Chunk counts verified: 1,000 → 2, 4,000 → 8
+- Benchmark logical rows identical between baseline and optimised

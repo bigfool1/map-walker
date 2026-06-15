@@ -8,6 +8,7 @@ import (
 )
 
 type PersistenceWorker struct {
+	db       *DB
 	save     func(realtime.PositionUpdate) error
 	ordered  chan []realtime.PositionUpdate
 	flush    chan chan struct{}
@@ -19,6 +20,7 @@ type PersistenceWorker struct {
 
 func NewPersistenceWorker(db *DB) *PersistenceWorker {
 	w := &PersistenceWorker{
+		db: db,
 		save: func(update realtime.PositionUpdate) error {
 			return db.SaveUserPosition(update.UserID, update.Lat, update.Lng)
 		},
@@ -96,15 +98,62 @@ func (w *PersistenceWorker) drainPending() {
 	}
 }
 
+// apply 过滤折叠后按存储后端路由写入策略。
 func (w *PersistenceWorker) apply(batch []realtime.PositionUpdate) {
-	for _, update := range batch {
-		if update.Seq <= w.lastSeq[update.UserID] {
+	accepted := w.filterAndCollapse(batch)
+	if len(accepted) == 0 {
+		return
+	}
+
+	if w.db != nil && w.db.Driver() == "mysql" {
+		w.applyBulk(accepted)
+		return
+	}
+	w.applyPerRow(accepted)
+}
+
+// filterAndCollapse 过滤 lastSeq 过期的更新，同一用户只保留最高 seq。
+func (w *PersistenceWorker) filterAndCollapse(batch []realtime.PositionUpdate) []realtime.PositionUpdate {
+	best := make(map[int64]realtime.PositionUpdate, len(batch))
+	for _, u := range batch {
+		if u.Seq <= w.lastSeq[u.UserID] {
 			continue
 		}
-		if err := w.save(update); err != nil {
-			log.Printf("persist position user=%d: %v", update.UserID, err)
+		if existing, ok := best[u.UserID]; !ok || u.Seq > existing.Seq {
+			best[u.UserID] = u
+		}
+	}
+	result := make([]realtime.PositionUpdate, 0, len(best))
+	for _, u := range best {
+		result = append(result, u)
+	}
+	return result
+}
+
+// applyPerRow SQLite 路径：逐行保存，保留现有行为和错误格式。
+func (w *PersistenceWorker) applyPerRow(updates []realtime.PositionUpdate) {
+	for _, u := range updates {
+		if err := w.save(u); err != nil {
+			log.Printf("persist position user=%d: %v", u.UserID, err)
 			continue
 		}
-		w.lastSeq[update.UserID] = update.Seq
+		w.lastSeq[u.UserID] = u.Seq
+	}
+}
+
+// applyBulk MySQL 路径：按 MaxPositionChunkSize 分块批量保存。
+// 每块独立事务，失败块不阻塞后续块，只推进成功块的 lastSeq。
+func (w *PersistenceWorker) applyBulk(updates []realtime.PositionUpdate) {
+	for i := 0; i < len(updates); i += MaxPositionChunkSize {
+		end := min(i+MaxPositionChunkSize, len(updates))
+		chunk := updates[i:end]
+
+		if err := w.db.SavePositionChunk(chunk); err != nil {
+			log.Printf("persist position chunk (offset=%d size=%d): %v", i, len(chunk), err)
+			continue
+		}
+		for _, u := range chunk {
+			w.lastSeq[u.UserID] = u.Seq
+		}
 	}
 }
