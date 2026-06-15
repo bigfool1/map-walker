@@ -17,6 +17,7 @@ type SyntheticUserRecord struct {
 	Lat         float64
 	Lng         float64
 	Appearance  Appearance
+	IsSynthetic bool
 }
 
 type PrepareSyntheticUserParams struct {
@@ -38,10 +39,9 @@ type PrepareSyntheticUserResult struct {
 
 func (db *DB) LoadSyntheticUsers() ([]SyntheticUserRecord, error) {
 	rows, err := db.Query(
-		`SELECT id, username, last_lat, last_lng, appearance_color, appearance_shape
+		`SELECT id, username, last_lat, last_lng, appearance_color, appearance_shape, is_synthetic
 		 FROM users
-		 WHERE username_normalized LIKE ?`,
-		SyntheticUsernameNormalizedPrefix+"%",
+		 WHERE is_synthetic = TRUE`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query synthetic users: %w", err)
@@ -75,6 +75,15 @@ func (db *DB) PrepareSyntheticUser(params PrepareSyntheticUserParams) (PrepareSy
 
 	result := PrepareSyntheticUserResult{UserID: user.ID}
 
+	if !user.IsSynthetic {
+		if _, err := db.Exec(
+			`UPDATE users SET is_synthetic = TRUE WHERE id = ?`,
+			user.ID,
+		); err != nil {
+			return PrepareSyntheticUserResult{}, fmt.Errorf("correct synthetic marker: %w", err)
+		}
+	}
+
 	if user.Appearance != params.Appearance {
 		if err := db.SaveUserAppearance(user.ID, params.Appearance); err != nil {
 			return PrepareSyntheticUserResult{}, err
@@ -101,6 +110,7 @@ func (db *DB) createSyntheticUser(params PrepareSyntheticUserParams, normalized 
 		LastLat:            sql.NullFloat64{Valid: true, Float64: params.InitialLat},
 		LastLng:            sql.NullFloat64{Valid: true, Float64: params.InitialLng},
 		Appearance:         params.Appearance,
+		IsSynthetic:        true,
 	})
 	if err != nil {
 		return PrepareSyntheticUserResult{}, err
@@ -124,7 +134,21 @@ type BulkCreateSyntheticUserParams struct {
 
 // 每批最多 500 行，确保 SQLite/MySQL 参数数在 SQLITE_MAX_VARIABLE_NUMBER 内
 const bulkCreateChunkSize = 500
-const bulkCreateColumns = 8
+const bulkCreateColumns = 10
+
+// CorrectSyntheticMarkers 修正已有合成账户的 is_synthetic 标记
+func (db *DB) CorrectSyntheticMarkers() (int64, error) {
+	result, err := db.Exec(
+		`UPDATE users SET is_synthetic = TRUE
+		 WHERE username_normalized LIKE ? AND is_synthetic = FALSE`,
+		SyntheticUsernameNormalizedPrefix+"%",
+	)
+	if err != nil {
+		return 0, fmt.Errorf("correct synthetic markers: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return n, nil
+}
 
 func (db *DB) BulkCreateSyntheticUsers(params []BulkCreateSyntheticUserParams) (int, error) {
 	if len(params) == 0 {
@@ -134,7 +158,7 @@ func (db *DB) BulkCreateSyntheticUsers(params []BulkCreateSyntheticUserParams) (
 	// 预展开行模板，避免每块重复分配
 	rowPlaceholders := make([]string, bulkCreateChunkSize)
 	for i := range rowPlaceholders {
-		rowPlaceholders[i] = "(?, ?, ?, ?, ?, ?, ?, ?)"
+		rowPlaceholders[i] = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	}
 
 	total := 0
@@ -158,11 +182,13 @@ func (db *DB) BulkCreateSyntheticUsers(params []BulkCreateSyntheticUserParams) (
 				p.InitialLng,
 				appearance.Color,
 				appearance.Shape,
+				int64(0), // collectible_score
+				true,     // is_synthetic
 			)
 		}
 
 		query := fmt.Sprintf(
-			`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
+			`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape, collectible_score, is_synthetic)
 			 VALUES %s`,
 			strings.Join(rowPlaceholders[:len(chunk)], ", "),
 		)
@@ -250,6 +276,7 @@ func scanSyntheticUserRecord(rows *sql.Rows) (SyntheticUserRecord, error) {
 		&lastLng,
 		&record.Appearance.Color,
 		&record.Appearance.Shape,
+		&record.IsSynthetic,
 	); err != nil {
 		return SyntheticUserRecord{}, fmt.Errorf("scan synthetic user: %w", err)
 	}

@@ -19,14 +19,16 @@ type User struct {
 	LastLat            sql.NullFloat64
 	LastLng            sql.NullFloat64
 	Appearance         Appearance
+	CollectibleScore   int64
+	IsSynthetic        bool
 }
 
 // CreateUser 插入用户并返回数据库自动生成的 ID。
 func (db *DB) CreateUser(user User) (int64, error) {
 	appearance := appearanceOrDefault(user.Appearance)
 	result, err := db.Exec(
-		`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape, collectible_score, is_synthetic)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.Username,
 		user.UsernameNormalized,
 		user.PasswordHash,
@@ -35,6 +37,8 @@ func (db *DB) CreateUser(user User) (int64, error) {
 		nullFloat(user.LastLng),
 		appearance.Color,
 		appearance.Shape,
+		user.CollectibleScore,
+		user.IsSynthetic,
 	)
 	if err != nil && isUniqueViolation(err) {
 		return 0, ErrDuplicateUsername
@@ -51,7 +55,7 @@ func (db *DB) CreateUser(user User) (int64, error) {
 
 func (db *DB) GetUserByNormalizedUsername(normalized string) (User, error) {
 	row := db.QueryRow(
-		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape
+		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape, collectible_score, is_synthetic
 		 FROM users WHERE username_normalized = ?`,
 		normalized,
 	)
@@ -60,7 +64,7 @@ func (db *DB) GetUserByNormalizedUsername(normalized string) (User, error) {
 
 func (db *DB) GetUserByID(id int64) (User, error) {
 	row := db.QueryRow(
-		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape
+		`SELECT id, username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape, collectible_score, is_synthetic
 		 FROM users WHERE id = ?`,
 		id,
 	)
@@ -141,6 +145,8 @@ type SavedPlayerState struct {
 	Lng         float64
 	HasPosition bool
 	Appearance  Appearance
+	Score       int64
+	IsSynthetic bool
 }
 
 func (db *DB) GetUserSavedState(userID int64) (SavedPlayerState, error) {
@@ -150,8 +156,10 @@ func (db *DB) GetUserSavedState(userID int64) (SavedPlayerState, error) {
 	}
 
 	state := SavedPlayerState{
-		Username:   user.Username,
-		Appearance: user.Appearance,
+		Username:    user.Username,
+		Appearance:  user.Appearance,
+		Score:       user.CollectibleScore,
+		IsSynthetic: user.IsSynthetic,
 	}
 	if user.LastLat.Valid && user.LastLng.Valid {
 		state.Lat = user.LastLat.Float64
@@ -185,6 +193,8 @@ func scanUser(row *sql.Row) (User, error) {
 		&lastLng,
 		&user.Appearance.Color,
 		&user.Appearance.Shape,
+		&user.CollectibleScore,
+		&user.IsSynthetic,
 	)
 	if err == sql.ErrNoRows {
 		return User{}, ErrNotFound

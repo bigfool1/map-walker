@@ -13,9 +13,11 @@ type Service struct {
 }
 
 type User struct {
-	ID         int64
-	Username   string
-	Appearance storage.Appearance
+	ID          int64
+	Username    string
+	Appearance  storage.Appearance
+	Score       int64
+	IsSynthetic bool
 }
 
 func NewService(db *storage.DB) *Service {
@@ -135,9 +137,11 @@ func (s *Service) SaveAppearance(userID int64, appearance storage.Appearance) er
 
 func authUserFromRecord(record storage.User) User {
 	return User{
-		ID:         record.ID,
-		Username:   record.Username,
-		Appearance: record.Appearance,
+		ID:          record.ID,
+		Username:    record.Username,
+		Appearance:  record.Appearance,
+		Score:       record.CollectibleScore,
+		IsSynthetic: record.IsSynthetic,
 	}
 }
 

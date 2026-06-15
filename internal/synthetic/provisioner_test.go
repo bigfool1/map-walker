@@ -310,3 +310,7 @@ func (s *faultInjectStore) BulkInitializePositions(entries []storage.BulkPositio
 func (s *faultInjectStore) GetUserPosition(userID int64) (float64, float64, bool, error) {
 	return s.db.GetUserPosition(userID)
 }
+
+func (s *faultInjectStore) CorrectSyntheticMarkers() (int64, error) {
+	return s.db.CorrectSyntheticMarkers()
+}

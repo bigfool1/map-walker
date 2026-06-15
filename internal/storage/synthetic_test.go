@@ -23,6 +23,7 @@ func TestLoadSyntheticUsersReturnsAllPrefixMatches(t *testing.T) {
 			UsernameNormalized: name,
 			PasswordHash:       "hash",
 			CreatedAt:          now,
+			IsSynthetic:        true,
 		})
 		if err != nil {
 			t.Fatalf("create user %q failed: %v", name, err)

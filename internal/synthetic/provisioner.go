@@ -17,6 +17,7 @@ type userStore interface {
 	BulkUpdateAppearances(userIDs []int64, appearance storage.Appearance) error
 	BulkInitializePositions(entries []storage.BulkPositionEntry) error
 	GetUserPosition(userID int64) (lat, lng float64, ok bool, err error)
+	CorrectSyntheticMarkers() (int64, error)
 }
 
 type AccountReadiness struct {
@@ -64,6 +65,11 @@ func (p *Provisioner) Provision(ctx context.Context, count, workers int, passwor
 	}
 	if count == 0 {
 		return ProvisionResult{}, nil
+	}
+
+	// 修正已有合成账户的 is_synthetic 标记（处理迁移前的旧数据）
+	if _, err := p.Store.CorrectSyntheticMarkers(); err != nil {
+		return ProvisionResult{}, fmt.Errorf("correct synthetic markers: %w", err)
 	}
 
 	existing, err := p.indexExisting()
