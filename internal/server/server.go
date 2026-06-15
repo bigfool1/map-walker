@@ -5,12 +5,16 @@ import (
 
 	"map-walker/internal/auth"
 	"map-walker/internal/realtime"
+	"map-walker/internal/synthetic"
 )
 
 type Server struct {
-	hub    *realtime.Hub
-	auth   *auth.Service
-	static http.Handler
+	hub               *realtime.Hub
+	auth              *auth.Service
+	static            http.Handler
+	adminToken        string
+	hubSnapshot       func() *realtime.HubSnapshot
+	syntheticSnapshot func() *synthetic.SyntheticSnapshot
 }
 
 func New(hub *realtime.Hub, authService *auth.Service) *Server {
@@ -19,6 +23,19 @@ func New(hub *realtime.Hub, authService *auth.Service) *Server {
 		auth:   authService,
 		static: http.FileServer(http.Dir("web")),
 	}
+}
+
+// WithAdmin configures the optional admin token and snapshot providers.
+// Call before Routes(). Returns the receiver for chaining.
+func (s *Server) WithAdmin(
+	token string,
+	hubFn func() *realtime.HubSnapshot,
+	synFn func() *synthetic.SyntheticSnapshot,
+) *Server {
+	s.adminToken = token
+	s.hubSnapshot = hubFn
+	s.syntheticSnapshot = synFn
+	return s
 }
 
 func (s *Server) Routes() http.Handler {
@@ -30,6 +47,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/session", s.handleSession)
 	mux.HandleFunc("/api/appearance", s.handleAppearance)
 	mux.HandleFunc("/ws", s.handleWebSocket)
+	mux.HandleFunc("/admin", s.handleAdmin)
+	mux.HandleFunc("/api/admin/synthetic-stats", s.handleAdminStats)
 	mux.Handle("/", s.static)
 	return mux
 }

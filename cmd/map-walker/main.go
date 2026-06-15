@@ -84,6 +84,13 @@ func main() {
 	}
 
 	srv := server.New(hub, auth.NewService(db))
+	if adminToken := os.Getenv("MAP_WALKER_ADMIN_TOKEN"); adminToken != "" {
+		var synFn func() *synthetic.SyntheticSnapshot
+		if manager != nil {
+			synFn = manager.Snapshot
+		}
+		srv.WithAdmin(adminToken, hub.Snapshot, synFn)
+	}
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	httpServer := &http.Server{
