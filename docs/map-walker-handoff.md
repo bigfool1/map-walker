@@ -335,3 +335,81 @@ TotalActivated, TotalMessages, SampledAt
 - Dynamic client resizing via API
 - Gameplay AI or pathfinding
 - Multi-Hub federation
+
+## Replication Reverse Fan-Out Phase (Complete)
+
+Design and plan: `docs/superpowers/specs/2026-06-15-replication-reverse-fanout-design.md`,
+`docs/superpowers/plans/2026-06-15-replication-reverse-fanout.md`.
+
+### Problem
+
+`broadcastReplication` used an O(clients × movers) nested loop: for each
+connected client, iterate every moved player, check old and new visibility,
+and build a per-client `ReplicationChanges`. At ~2,800 clients and ~2,000
+movers per broadcast this produced millions of visibility lookups before JSON
+encoding and send-queue work, pushing broadcast duration past the 100ms
+interval and causing sim ticks to drop from 20 Hz to 8–10 Hz.
+
+### Changes
+
+- **Task 1 — regression tests:** 7 new Hub tests freeze multi-mover, same-tick
+  multi-entry/leave, self-position suppression, queue-full removal, and movement
+  directionality semantics. 20× repeat stable.
+- **Task 2 — deterministic benchmarks:** 2,000- and 3,000-client in-memory
+  benchmarks with the same deterministic placement hash as synthetic clients.
+  Direct `Step` + `broadcastReplication` calls eliminate select-loop randomness;
+  all logical counters (msgs, bytes, moved, entered, left) are identical across
+  repeated runs.
+- **Task 3 — mover-local visibility snapshots:** replaced `snapshotVisibility()`
+  (copied every connected client's visible set) with `snapshotMoverVisibility()`
+  (captures old neighbors only for moved players). Removed `wasVisibleTo`.
+- **Task 4 — recipient accumulation fan-out:** replaced the client-by-mover scan
+  with a broadcast-local `map[int64]*ReplicationChanges` accumulator. Self
+  positions, stable positions, entered, left, and appearances fan outward from
+  each changed player to its relevant recipients. Encode and send only for
+  recipients that accumulated changes. `NormalizeReplicationChanges`,
+  `TryEncodeReplicationUpdate`, stats counters, and queue-full removal remain
+  unchanged.
+
+### Data flow
+
+```
+1. Take moved player IDs from World
+2. Snapshot mover-local old visibility (before AOI update)
+3. Apply AOI movement updates (existing applyMovementAOIChanges)
+4. Accumulate into map[recipientID]*ReplicationChanges:
+   a. Self positions for connected movers
+   b. Stable positions from movers → old+current neighbors
+   c. Pending entered from each entrant → visible connected neighbors
+   d. Pending left (already keyed by recipient)
+   e. Pending appearances to changed player + visible connected neighbors
+5. Encode + send only for accumulated, still-connected recipients
+```
+
+### Performance (Apple M5, go1.26.3)
+
+| Scale | Baseline | Optimised | Speedup |
+|-------|----------|-----------|---------|
+| 2,000 clients | ~97.0 ms | ~15.3 ms | **6.3×** |
+| 3,000 clients | ~211.7 ms | ~34.4 ms | **6.1×** |
+
+Full comparison: `docs/benchmarks/replication-reverse-fanout.md`.
+All logical counters (msgs, bytes, moved, entered, left) are identical to baseline.
+
+### Remaining bottlenecks
+
+- JSON encoding (2,000–3,000 messages, 3–7 MB per broadcast) dominates the
+  remaining ~15–34 ms.
+- Channel send/drain for thousands of clients adds overhead.
+- Real-world Hub select loop adds goroutine scheduling and channel multiplexing
+  overhead not captured by the synchronous benchmark.
+
+These are evidence for subsequent encoding, transport, or persistence phases.
+
+### Verification
+
+- `go test ./...` — all tests pass
+- `go test -race ./internal/realtime` — no races
+- `go vet ./...` — clean
+- Key replication tests 20× repeat — stable
+- Benchmark logical counters — identical to baseline

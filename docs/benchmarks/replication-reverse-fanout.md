@@ -1,4 +1,4 @@
-# Replication Reverse Fan-Out — Baseline
+# Replication Reverse Fan-Out — Performance Comparison
 
 Date: 2026-06-15
 
@@ -6,7 +6,8 @@ Date: 2026-06-15
 
 - **Machine:** Apple M5, Darwin arm64
 - **Go version:** go1.26.3 darwin/arm64
-- **Commit:** pre-optimisation (all-client-by-all-mover scan)
+- **Baseline commit:** pre-optimisation (all-client-by-all-mover scan)
+- **Optimised commit:** post reverse fan-out (recipient accumulation)
 
 ## Scenario
 
@@ -23,39 +24,41 @@ Date: 2026-06-15
 go test -run '^$' -bench 'BenchmarkHubReplication/(2000|3000)$' -benchmem -benchtime=1x -count=5 ./internal/realtime
 ```
 
-## Baseline Results (pre-change)
+## Results
 
 ### 2,000 clients (1,600 moved)
 
-| Run | ns/op | msgs/op | bytes/op | moved/op | entered/op | left/op |
-|-----|-------|---------|----------|----------|------------|---------|
-| 1 | 97,415,584 | 2,000 | 2,906,450 | 1,600 | 1,655 | 1,584 |
-| 2 | 93,349,833 | 2,000 | 2,906,450 | 1,600 | 1,655 | 1,584 |
-| 3 | 96,801,541 | 2,000 | 2,906,450 | 1,600 | 1,655 | 1,584 |
-| 4 | 93,997,543 | 2,000 | 2,906,450 | 1,600 | 1,655 | 1,584 |
-| 5 | 103,501,625 | 2,000 | 2,906,450 | 1,600 | 1,655 | 1,584 |
-
-**Average:** ~97.0 ms/op, 2,000 msgs/op, 2,906,450 bytes/op
+| Metric | Baseline | Optimised | Change |
+|--------|----------|-----------|--------|
+| ns/op | ~97,013,226 | ~15,278,300 | **-84.3%** |
+| ms/op | ~97.0 | ~15.3 | **6.3× faster** |
+| msgs/op | 2,000 | 2,000 | identical |
+| bytes/op | 2,906,450 | 2,906,450 | identical |
+| moved/op | 1,600 | 1,600 | identical |
+| entered/op | 1,655 | 1,655 | identical |
+| left/op | 1,584 | 1,584 | identical |
 
 ### 3,000 clients (2,400 moved)
 
-| Run | ns/op | msgs/op | bytes/op | moved/op | entered/op | left/op |
-|-----|-------|---------|----------|----------|------------|---------|
-| 1 | 209,642,707 | 3,000 | 6,864,804 | 2,400 | 3,612 | 3,497 |
-| 2 | 210,502,209 | 3,000 | 6,864,804 | 2,400 | 3,612 | 3,497 |
-| 3 | 207,087,000 | 3,000 | 6,864,804 | 2,400 | 3,612 | 3,497 |
-| 4 | 218,015,292 | 3,000 | 6,864,804 | 2,400 | 3,612 | 3,497 |
-| 5 | 213,320,083 | 3,000 | 6,864,804 | 2,400 | 3,612 | 3,497 |
+| Metric | Baseline | Optimised | Change |
+|--------|----------|-----------|--------|
+| ns/op | ~211,713,458 | ~34,440,833 | **-83.7%** |
+| ms/op | ~211.7 | ~34.4 | **6.1× faster** |
+| msgs/op | 3,000 | 3,000 | identical |
+| bytes/op | 6,864,804 | 6,864,804 | identical |
+| moved/op | 2,400 | 2,400 | identical |
+| entered/op | 3,612 | 3,612 | identical |
+| left/op | 3,497 | 3,497 | identical |
 
-**Average:** ~211.7 ms/op, 3,000 msgs/op, 6,864,804 bytes/op
+## Remaining Bottlenecks
 
-## Logical Counter Stability
+- **JSON encoding** (2000–3000 messages, 3–7 MB per broadcast) dominates the remaining ~15–34 ms.
+- **Channel send/drain** for thousands of clients adds overhead.
+- **Benchmark-only:** the measured code runs synchronously. Real-world Hub select loop adds goroutine scheduling and channel multiplexing overhead.
 
-- moved/op, msgs/op, and bytes/op are identical across all 5 runs at each scale.
-- The deterministic placement and direct method-call approach eliminate select-loop randomness.
+These are follow-up evidence for subsequent phases (encoding, transport, persistence). They are not addressed in this implementation.
 
 ## Notes
 
-- `B/op` and `allocs/op` from `-benchmem` reflect only the benchmark goroutine, not Hub internal allocations. Pre/post comparison of allocation counts is not meaningful with this benchmark structure.
+- `B/op` and `allocs/op` from `-benchmem` reflect only the benchmark goroutine, not Hub internal allocations. Absolute allocation comparison is not meaningful.
 - ns/op includes World.Step, broadcastReplication, JSON encoding, channel send, and drain. It excludes HTTP, WebSocket framing, kernel buffers, persistence, and frontend rendering.
-- The message count (2,000 / 3,000) equals the client count because every client either moves (receiving SelfPosition) or observes a moving neighbor. This is expected for the 10km×10km region at this client density.
