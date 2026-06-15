@@ -19,10 +19,12 @@ type Client struct {
 	username string
 	send     chan []byte
 
-	closeOnce sync.Once
-	readyOnce sync.Once
-	ready     chan struct{}
-	done      chan struct{}
+	closeOnce  sync.Once
+	readyOnce  sync.Once
+	ready      chan struct{}
+	done       chan struct{}
+	sendMu     sync.RWMutex
+	sendClosed bool
 
 	messagesDrained atomic.Uint64
 	bytesDrained    atomic.Uint64
@@ -79,6 +81,12 @@ func (c *Client) Username() string {
 }
 
 func (c *Client) Send(data []byte) bool {
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	if c.sendClosed {
+		return false
+	}
+
 	select {
 	case c.send <- data:
 		c.trackQueueHighWater()
@@ -95,7 +103,10 @@ func (c *Client) WasQueueFull() bool {
 
 func (c *Client) CloseSend() {
 	c.closeOnce.Do(func() {
+		c.sendMu.Lock()
+		c.sendClosed = true
 		close(c.send)
+		c.sendMu.Unlock()
 		if c.heldDrain != nil {
 			close(c.heldDrain)
 		}

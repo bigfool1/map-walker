@@ -120,6 +120,15 @@ func TestClientCloseSendIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestClientSendAfterCloseReturnsFalse(t *testing.T) {
+	client := NewClient(1, "synthetic_1")
+	client.CloseSend()
+
+	if client.Send([]byte("payload")) {
+		t.Fatal("Send after CloseSend returned true")
+	}
+}
+
 func TestClientSendCloseRace(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		client := NewClient(1, "synthetic_1")

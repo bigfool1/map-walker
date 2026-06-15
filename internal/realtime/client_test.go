@@ -34,6 +34,33 @@ func TestDefaultSendBufferSize(t *testing.T) {
 	}
 }
 
+func TestClientSendAfterCloseReturnsFalse(t *testing.T) {
+	clientReady := make(chan *Client, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			t.Errorf("accept failed: %v", err)
+			return
+		}
+		clientReady <- NewClient(1001, "alice", conn, nil)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	peer, _, err := websocket.Dial(context.Background(), wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+
+	client := <-clientReady
+	peer.CloseNow()
+	client.CloseSend()
+
+	if client.Send([]byte("payload")) {
+		t.Fatal("Send after CloseSend returned true")
+	}
+}
+
 func TestClientDisconnectsUnresponsivePeer(t *testing.T) {
 	withFastHeartbeat(t)
 

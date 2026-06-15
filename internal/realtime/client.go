@@ -34,6 +34,8 @@ type Client struct {
 	send        chan []byte
 	cancel      context.CancelFunc
 	closeOnce   sync.Once
+	sendMu      sync.RWMutex
+	sendClosed  bool
 }
 
 func NewClient(id int64, username string, conn *websocket.Conn, hub *Hub) *Client {
@@ -67,6 +69,12 @@ func (c *Client) Username() string {
 }
 
 func (c *Client) Send(data []byte) bool {
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	if c.sendClosed {
+		return false
+	}
+
 	select {
 	case c.send <- data:
 		return true
@@ -87,7 +95,10 @@ func (c *Client) finish() {
 		if c.cancel != nil {
 			c.cancel()
 		}
+		c.sendMu.Lock()
+		c.sendClosed = true
 		close(c.send)
+		c.sendMu.Unlock()
 		_ = c.conn.Close(websocket.StatusGoingAway, "disconnected")
 	})
 }

@@ -44,6 +44,15 @@ Submit 异步投递，Drain 时 batch 可能还没到达 worker。
 
 有 persister 的测试失败时，先检查 channel/select/异步时序。别先改业务代码——运行时逻辑通常是对的。
 
+### 8. 关闭 send channel 必须与 Send 同步
+
+Client 的 socket/write/heartbeat goroutine 可以先于 Hub 的 Unregister case
+发现断线。若它直接关闭 send channel，Hub 在移除该 Client 前仍可能广播，
+导致 `send on closed channel`。
+
+**修法**：Client 自己同步 `Send` 与 `CloseSend`，关闭后 `Send` 返回 false。
+Hub 继续把 false 当作断连信号；不要依赖 Unregister 一定先于下一次广播。
+
 ## 关键场景速查
 
 | 场景 | 行为 |
