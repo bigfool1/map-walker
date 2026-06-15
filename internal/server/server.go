@@ -46,6 +46,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/logout", s.handleLogout)
 	mux.HandleFunc("/api/session", s.handleSession)
 	mux.HandleFunc("/api/appearance", s.handleAppearance)
+	mux.HandleFunc("/api/leaderboard/online", s.handleLeaderboard)
 	mux.HandleFunc("/ws", s.handleWebSocket)
 	mux.HandleFunc("/admin", s.handleAdmin)
 	mux.HandleFunc("/api/admin/synthetic-stats", s.handleAdminStats)

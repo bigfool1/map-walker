@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"log"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,25 @@ type collectEvent struct {
 	collectibleID uint64
 }
 
+// LeaderboardEntry 排行榜条目（在线玩家）
+type LeaderboardEntry struct {
+	PlayerID int64  `json:"playerId,omitempty"`
+	Username string `json:"username,omitempty"`
+	Score    int64  `json:"score"`
+	Rank     int    `json:"rank,omitempty"`
+}
+
+// LeaderboardResponse 排行榜查询响应
+type LeaderboardResponse struct {
+	Top  []LeaderboardEntry `json:"top"`
+	Self *LeaderboardEntry  `json:"self,omitempty"`
+}
+
+type leaderboardRequest struct {
+	requesterID int64
+	reply       chan LeaderboardResponse
+}
+
 type appearanceUpdateRequest struct {
 	userID     int64
 	appearance game.Appearance
@@ -60,6 +80,7 @@ type Hub struct {
 	pendingCollectCollected  map[int64][]uint64
 	collectCooldowns         map[int64]time.Time
 	collects                 chan collectEvent
+	leaderboards             chan leaderboardRequest
 	register                 chan ClientSender
 	unregister         chan ClientSender
 	inputs             chan inputEvent
@@ -81,6 +102,17 @@ type Hub struct {
 	stopTickers        func()
 	stats              intervalStats
 	snapshot           atomic.Pointer[HubSnapshot]
+}
+
+// Leaderboard 同步查询在线排行榜（阻塞等待 Hub actor 响应）
+func (h *Hub) Leaderboard(requesterID int64) LeaderboardResponse {
+	reply := make(chan LeaderboardResponse, 1)
+	select {
+	case h.leaderboards <- leaderboardRequest{requesterID: requesterID, reply: reply}:
+		return <-reply
+	case <-h.done:
+		return LeaderboardResponse{}
+	}
 }
 
 // SubmitCollect 提交拾取意图到 Hub actor（非阻塞）
@@ -165,6 +197,7 @@ func newHub(
 		pendingCollectCollected: map[int64][]uint64{},
 		collectCooldowns:        map[int64]time.Time{},
 		collects:                make(chan collectEvent),
+		leaderboards:            make(chan leaderboardRequest),
 		register:                make(chan ClientSender),
 		unregister:         make(chan ClientSender),
 		inputs:             make(chan inputEvent),
@@ -226,6 +259,8 @@ func (h *Hub) Run() {
 			h.applyAppearanceUpdate(req)
 		case evt := <-h.collects:
 			h.processCollect(evt)
+		case req := <-h.leaderboards:
+			req.reply <- h.buildLeaderboard(req.requesterID)
 		case <-h.stop:
 			for _, client := range h.clients {
 				h.submitFinalPosition(client.ID())
@@ -561,6 +596,53 @@ func (h *Hub) sendInitialization(client ClientSender) {
 }
 
 const collectCooldown = 300 * time.Millisecond
+
+// buildLeaderboard 构建在线排行榜（在 Hub actor 内调用，无需额外同步）
+func (h *Hub) buildLeaderboard(requesterID int64) LeaderboardResponse {
+	type entry struct {
+		playerID int64
+		username string
+		score    int64
+	}
+	entries := make([]entry, 0, len(h.clients))
+	for playerID := range h.clients {
+		if _, synthetic := h.syntheticPlayerIDs[playerID]; synthetic {
+			continue
+		}
+		score := h.playerScores[playerID]
+		username := ""
+		if state, ok := h.world.PlayerState(playerID); ok {
+			username = state.Username
+		}
+		entries = append(entries, entry{playerID: playerID, username: username, score: score})
+	}
+
+	// 按分数降序、playerID 升序
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].score != entries[j].score {
+			return entries[i].score > entries[j].score
+		}
+		return entries[i].playerID < entries[j].playerID
+	})
+
+	top := make([]LeaderboardEntry, 0, 5)
+	for i, e := range entries {
+		if i >= 5 {
+			break
+		}
+		top = append(top, LeaderboardEntry{PlayerID: e.playerID, Username: e.username, Score: e.score})
+	}
+
+	var self *LeaderboardEntry
+	for i, e := range entries {
+		if e.playerID == requesterID {
+			self = &LeaderboardEntry{PlayerID: e.playerID, Username: e.username, Score: e.score, Rank: i + 1}
+			break
+		}
+	}
+
+	return LeaderboardResponse{Top: top, Self: self}
+}
 
 // processCollect 在 Hub actor 内串行处理拾取请求
 func (h *Hub) processCollect(evt collectEvent) {
