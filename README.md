@@ -1,12 +1,13 @@
 # Map Walker
 
-A small server-authoritative multiplayer demo built with Go and Leaflet. Players
+[中文版](README.zh.md)
+
+A server-authoritative multiplayer demo built with Go and Leaflet. Players
 register an account, move through a shared world, pick up gold collectibles for
 permanent score points, and compete on an on-demand online leaderboard. The Go
-server owns all state: positions, collectibles, scores. Movement simulates at
+server owns all state — positions, collectibles, scores. Movement simulates at
 20 Hz, AOI-filtered replication broadcasts at 10 Hz, and positions persist every
-5 seconds. MySQL is the production target backend; SQLite is retained for local
-development and testing.
+5 seconds. MySQL is the backend database.
 
 ## Quick Start
 
@@ -25,33 +26,33 @@ go run ./cmd/map-walker -collectible-regions my-regions.json
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-host` | `0.0.0.0` | 监听地址 |
-| `-port` | `8080` | 监听端口 |
-| `-db-driver` | `sqlite` (or `$DB_DRIVER`) | 数据库驱动 (`sqlite` / `mysql`) |
-| `-db-dsn` | `data/map-walker.db` (or `$DB_DSN`) | 数据库 DSN |
-| `-collectible-regions` | `config/collectible-regions.json` | 收集品区域配置文件 |
-| `-synthetic-clients` | `0` | 合成客户端数量 (0 = 禁用) |
-| `-synthetic-ramp-rate` | `10` | 合成客户端每秒激活速率 |
-| `-synthetic-auto-provision` | `false` | 自动注册合成客户端账号 |
+| `-host` | `0.0.0.0` | Listen address |
+| `-port` | `8080` | Listen port |
+| `-db-driver` | `mysql` (or `$DB_DRIVER`) | Database driver (`sqlite` / `mysql`) |
+| `-db-dsn` | (no default, `$DB_DSN`) | Database DSN |
+| `-collectible-regions` | `config/collectible-regions.json` | Collectible region config |
+| `-synthetic-clients` | `0` | Synthetic client count (0 = disabled) |
+| `-synthetic-ramp-rate` | `10` | Synthetic clients activated per second |
+| `-synthetic-auto-provision` | `false` | Auto-register synthetic accounts |
 
-环境变量（优先级低于命令行 flag）：
+Environment variables (overridden by CLI flags):
 
 | Variable | Description |
 |----------|-------------|
-| `DB_DRIVER` | `-db-driver` 的默认值 |
-| `DB_DSN` | `-db-dsn` 的默认值 |
-| `MAP_WALKER_SYNTHETIC_PASSWORD` | 合成客户端自动注册时的密码 |
+| `DB_DRIVER` | Default for `-db-driver` |
+| `DB_DSN` | Default for `-db-dsn` |
+| `MAP_WALKER_SYNTHETIC_PASSWORD` | Password for synthetic account auto-provisioning |
 
-Database is created automatically on first run (`data/map-walker.db` for SQLite).
-Press **Ctrl+C** for graceful shutdown — all online positions are saved before exit.
+The database schema is created automatically on first run. Press **Ctrl+C** for
+graceful shutdown — all online positions are saved before exit.
 
-Open two browser windows with different accounts (or one account in two windows
-for reconnect testing) to see multiplayer.
+Open two browser windows with different accounts to see multiplayer (or one
+account in two windows for reconnect testing).
 
 ### Synthetic clients
 
 Pre-provisioned bot accounts that connect over WebSocket and wander the map,
-exercising AOI and replication at scale without needing real users:
+exercising AOI and replication at scale without real users:
 
 ```bash
 # 50 bots ramp up at 10/s using accounts already in the database
@@ -64,8 +65,8 @@ MAP_WALKER_SYNTHETIC_PASSWORD=secret go run ./cmd/map-walker \
 
 ### Admin page
 
-A read-only operator dashboard showing live Hub and synthetic-client metrics.
-Always available at `/stats`:
+A read-only operator dashboard showing live Hub and synthetic-client metrics at
+`/stats`:
 
 ```bash
 go run ./cmd/map-walker -synthetic-clients 50
@@ -77,15 +78,16 @@ The page polls `/api/stats/synthetic` once per second.
 ## Docker Deployment
 
 ```bash
-# 构建并启动（含 MySQL）
+# Build and start (includes MySQL)
 ./build.sh
 
-# 或手动
+# Or manually
 docker compose up -d
 ```
 
-`docker-compose.yml` 启动两个服务：`map-walker`（Go 应用）和 `mysql`（MySQL 8.0）。
-数据库驱动和 DSN 通过环境变量注入：
+`docker-compose.yml` starts three services: `map-walker` (Go app), `tester`
+(load tester), and `mysql` (MySQL 8.0). Database credentials are configured via
+environment variables:
 
 ```bash
 MYSQL_ROOT_PASSWORD=secret MYSQL_PASSWORD=secret DB_DSN=mapwalker:secret@tcp(mysql:3306)/mapwalkerdb docker compose up -d
@@ -93,10 +95,10 @@ MYSQL_ROOT_PASSWORD=secret MYSQL_PASSWORD=secret DB_DSN=mapwalker:secret@tcp(mys
 
 ## Collectible Gameplay
 
-Twenty translucent gold circular regions are displayed on the map. Each region
-contains 5 collectible gems rendered as glowing gold points. Walk within 10
-meters of a gem — the nearest one highlights — and press `J` (desktop) or tap
-the circular pickup button (touch, lower-right corner) to collect it.
+Translucent gold circular regions are displayed on the map. Each region contains
+collectible gems rendered as glowing gold points. Walk within 10 meters of a gem
+— the nearest one highlights — and press `J` (desktop) or tap the circular
+pickup button (touch, lower-right) to collect it.
 
 Each successful pickup awards exactly **one permanent score point**. The server
 validates every pickup: the collectible must exist, be visible, and the
@@ -110,10 +112,21 @@ while preserving player scores.
 
 ### Score and Leaderboard
 
-Your permanent score appears between the connection status bar and the map.
-Open the **排行** (leaderboard) button to see the current Top 5 online players
-and your rank. The leaderboard computes rankings on demand — no polling,
-caching, or push updates. Synthetic (bot) accounts are excluded.
+Your score appears between the connection status bar and the map. Click the
+**排行** (leaderboard) button to see the current Top 5 online players and your
+rank. The leaderboard ranks on demand — no polling, caching, or push updates.
+Synthetic (bot) accounts are excluded.
+
+### Appearance
+
+After registration, a welcome modal prompts you to pick your marker shape and
+color. You can change your appearance anytime from the account menu (top-right).
+
+### Controls
+
+- **WASD / Arrow keys** — move
+- **J** — pick up nearest collectible
+- Touch joystick and pickup button available on mobile
 
 ### Synthetic Exclusion
 
@@ -130,7 +143,9 @@ internal/server/     — routes, static files, WebSocket upgrade, auth/appearanc
 internal/realtime/   — connection lifecycle, actor loop, tickers, protocol, persistence, replication
 internal/game/       — authoritative World, movement rules, AOI spatial index, appearance
 internal/auth/       — user registration/login, session tokens, bcrypt
-internal/storage/    — SQLite/MySQL, migrations, user/session/position/appearance persistence
+internal/storage/    — MySQL, migrations, user/session/position/appearance persistence
+internal/synthetic/  — bot manager, provisioning, behavior, WebSocket client
+internal/tester/     — standalone WebSocket load tester
 web/                 — Leaflet/Amap frontend, auth card, account menu, keyboard + virtual joystick
 ```
 
@@ -148,10 +163,10 @@ Every 5 seconds the Hub submits only moved players to a background
 `PersistenceWorker` which writes to the database via a dedicated goroutine —
 simulation and broadcasts are never blocked. On MySQL, the worker collapses
 per-user updates to the highest sequence, then writes in 500-row bulk `UPDATE
-... JOIN` chunks with independent transactions per chunk. On SQLite, the worker
-uses the existing per-row update path. Genuine disconnects and logout trigger a
-synchronous final save. On reconnect, the saved position is restored.
-Same-account replacement (e.g. page refresh) keeps the in-memory position.
+... JOIN` chunks with independent transactions per chunk. Genuine disconnects
+and logout trigger a synchronous final save. On reconnect, the saved position is
+restored. Same-account replacement (e.g. page refresh) keeps the in-memory
+position.
 
 ### Area of Interest (AOI)
 
