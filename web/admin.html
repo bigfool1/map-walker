@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Map Walker Admin</title>
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <header>
+    <h1>Map Walker Admin</h1>
+    <div id="status-dot" class="dot dot-gray" title="Not connected"></div>
+  </header>
+
+  <section id="auth-section">
+    <p class="auth-hint">Enter the admin token to connect.</p>
+    <form id="token-form">
+      <input id="token-input" type="password" placeholder="Bearer token" autocomplete="off" spellcheck="false" />
+      <button type="submit">Connect</button>
+    </form>
+    <p id="auth-error" class="auth-error hidden"></p>
+  </section>
+
+  <main id="stats-section" class="hidden">
+    <div class="stats-header">
+      <span id="sampled-at" class="sampled-at"></span>
+      <button id="disconnect-btn" class="btn-secondary">Disconnect</button>
+    </div>
+
+    <section class="panel">
+      <h2>Hub <span class="panel-sub">all clients</span></h2>
+      <div class="cards" id="hub-cards">
+        <div class="card" id="c-connected">
+          <div class="card-value">—</div>
+          <div class="card-label">Connected</div>
+        </div>
+        <div class="card" id="c-sim-ticks">
+          <div class="card-value">—</div>
+          <div class="card-label">Sim Ticks</div>
+        </div>
+        <div class="card" id="c-moved">
+          <div class="card-value">—</div>
+          <div class="card-label">Moved Players</div>
+        </div>
+        <div class="card" id="c-aoi-pairs">
+          <div class="card-value">—</div>
+          <div class="card-label">AOI Candidates</div>
+        </div>
+        <div class="card" id="c-aoi-checks">
+          <div class="card-value">—</div>
+          <div class="card-label">AOI Checks</div>
+        </div>
+        <div class="card" id="c-entered">
+          <div class="card-value">—</div>
+          <div class="card-label">Entered</div>
+        </div>
+        <div class="card" id="c-left">
+          <div class="card-value">—</div>
+          <div class="card-label">Left</div>
+        </div>
+        <div class="card" id="c-repl-msgs">
+          <div class="card-value">—</div>
+          <div class="card-label">Repl Messages</div>
+        </div>
+        <div class="card" id="c-repl-recipients">
+          <div class="card-value">—</div>
+          <div class="card-label">Repl Recipients</div>
+        </div>
+        <div class="card" id="c-repl-bytes">
+          <div class="card-value">—</div>
+          <div class="card-label">Repl Bytes</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="syn-panel">
+      <h2>Synthetic Clients</h2>
+      <div class="cards" id="syn-cards">
+        <div class="card" id="c-syn-target">
+          <div class="card-value">—</div>
+          <div class="card-label">Target</div>
+        </div>
+        <div class="card" id="c-syn-active">
+          <div class="card-value">—</div>
+          <div class="card-label">Active</div>
+        </div>
+        <div class="card" id="c-syn-activating">
+          <div class="card-value">—</div>
+          <div class="card-label">Activating</div>
+        </div>
+        <div class="card" id="c-syn-moving">
+          <div class="card-value">—</div>
+          <div class="card-label">Moving</div>
+        </div>
+        <div class="card" id="c-syn-idle">
+          <div class="card-value">—</div>
+          <div class="card-label">Idle</div>
+        </div>
+        <div class="card" id="c-syn-failed">
+          <div class="card-value">—</div>
+          <div class="card-label">Failed</div>
+        </div>
+        <div class="card" id="c-syn-inputs-rate">
+          <div class="card-value">—</div>
+          <div class="card-label">Inputs/s</div>
+        </div>
+        <div class="card" id="c-syn-msgs-rate">
+          <div class="card-value">—</div>
+          <div class="card-label">Messages/s</div>
+        </div>
+        <div class="card" id="c-syn-bytes-rate">
+          <div class="card-value">—</div>
+          <div class="card-label">Bytes/s</div>
+        </div>
+        <div class="card" id="c-syn-total-activated">
+          <div class="card-value">—</div>
+          <div class="card-label">Total Activated</div>
+        </div>
+        <div class="card" id="c-syn-total-msgs">
+          <div class="card-value">—</div>
+          <div class="card-label">Total Messages</div>
+        </div>
+      </div>
+      <p id="syn-unavailable" class="syn-unavailable hidden">
+        No synthetic clients configured — start the server with <code>-synthetic-clients N</code>.
+      </p>
+    </section>
+  </main>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

@@ -239,3 +239,99 @@ Artifacts: `docs/benchmarks/profiles/100k-10k-normal-core-a1-repeat{1,2,3}.json`
 - Disconnected markers remain visible until the next `visible_entities_snapshot`
   or `replication_update` left event.
 - Verification: `go test ./internal/realtime`, manual stop/start server testing.
+
+## Synthetic Clients Phase (Complete)
+
+All 12 tasks of the Synthetic Clients phase are complete.  Verification:
+`go test ./...` and `go vet ./...` pass.
+
+### Overview
+
+Synthetic clients are in-process WebSocket bots that connect to the Hub under
+real accounts, send periodic movement inputs, and exercise AOI + replication
+at scale without real users.  They are entirely opt-in: the server behaves
+identically to the pre-phase version when `-synthetic-clients 0` (the default).
+
+### Architecture
+
+```
+cmd/map-walker/main.go
+  └─ buildSyntheticManager()          creates Manager if -synthetic-clients > 0
+       └─ synthetic.Manager           single-goroutine actor, ramp-up scheduler
+            ├─ synthetic.Provisioner  provisions bot accounts via HTTP/API
+            └─ synthetic.Client       implements realtime.ClientSender, wraps
+                                      github.com/coder/websocket
+```
+
+`Manager.Run()` is an actor loop (mirrors Hub.Run()) that owns client
+lifecycle, behavior scheduling, and stats aggregation.  No locking outside the
+loop.
+
+### New packages and files
+
+| File | Purpose |
+|------|---------|
+| `internal/synthetic/client.go` | WebSocket bot client, `realtime.ClientSender` impl |
+| `internal/synthetic/manager.go` | Manager actor loop, ramp-up, behavior scheduling |
+| `internal/synthetic/stats.go` | `SyntheticSnapshot` immutable stats struct |
+| `internal/synthetic/provisioner.go` | Account provisioning via HTTP |
+| `internal/realtime/stats.go` | `HubSnapshot` immutable stats struct |
+| `internal/realtime/manual_hub.go` | Test helper: channel-driven tick control |
+| `internal/server/admin.go` | Token-protected admin handlers |
+| `web/admin.html` | Read-only operator dashboard |
+| `web/admin.js` | 1 Hz polling, sessionStorage token, card renderer |
+| `web/admin.css` | Dark monospace card layout |
+| `cmd/map-walker/main_test.go` | Flag validation and lifecycle tests |
+
+### Command-line flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-synthetic-clients N` | `0` | Bot count; `0` disables the Manager entirely |
+| `-synthetic-ramp-rate N` | `5` | Connections per second during ramp-up |
+| `-synthetic-auto-provision` | `false` | Register bot accounts on first run |
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `MAP_WALKER_ADMIN_TOKEN` | Enables `/admin` and `/api/admin/synthetic-stats`; unset → 404 |
+| `MAP_WALKER_ADMIN_PASSWORD` | Required when `-synthetic-auto-provision` is set |
+
+### Shutdown order
+
+1. `httpServer.Shutdown()` — stop accepting new connections
+2. `manager.Stop()` — drain synthetic clients (if Manager is running)
+3. `hub.Stop()` — final position save, close real clients
+4. `db.Close()`
+
+### Metrics exposed by `/api/admin/synthetic-stats`
+
+**Hub (all clients):**
+ConnectedClients, SimulationTicks, MovedPlayers, AOICandidatePairs,
+AOIDistanceChecks, RelationshipsEntered, RelationshipsLeft,
+ReplicationMessages, ReplicationRecipients, ReplicationBytes, SampledAt
+
+**Synthetic (if Manager is running):**
+TargetCount, ActiveCount, ActivatingCount, MovingCount, IdleCount,
+FailedCount, InputsPerSecond, MessagesPerSecond, BytesPerSecond,
+TotalActivated, TotalMessages, SampledAt
+
+### Admin page
+
+`/admin` serves `web/admin.html`.  The page:
+- Stores the token only in `sessionStorage` (tab-scoped, never in cookies,
+  localStorage, URL, or server markup).
+- Polls `/api/admin/synthetic-stats` every 1 second with `Authorization: Bearer`.
+- On 401 clears the token and shows the input form again.
+- On 404 shows "Admin API not enabled on this server."
+- Does **not** include charts, history, client lists, start/stop controls,
+  or any write actions.
+
+### What was NOT implemented
+
+- HTTP/WebSocket bot (synthetic clients connect as in-process goroutines only)
+- JWT authentication migration
+- Dynamic client resizing via API
+- Gameplay AI or pathfinding
+- Multi-Hub federation

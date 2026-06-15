@@ -26,6 +26,41 @@ Press **Ctrl+C** for graceful shutdown — all online positions are saved before
 Open two browser windows with different accounts (or one account in two windows
 for reconnect testing) to see multiplayer.
 
+### Synthetic clients
+
+Pre-provisioned bot accounts that connect over WebSocket and wander the map,
+exercising AOI and replication at scale without needing real users:
+
+```bash
+# 50 bots ramp up at 5/s using accounts already in the database
+go run ./cmd/map-walker -synthetic-clients 50 -synthetic-ramp-rate 5
+
+# 50 bots with automatic account provisioning (requires admin password)
+MAP_WALKER_ADMIN_PASSWORD=secret go run ./cmd/map-walker \
+  -synthetic-clients 50 -synthetic-auto-provision
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-synthetic-clients N` | `0` (disabled) | Number of synthetic bot clients to maintain |
+| `-synthetic-ramp-rate N` | `5` | Connections per second during ramp-up |
+| `-synthetic-auto-provision` | `false` | Register bot accounts automatically |
+
+### Admin page
+
+A read-only operator dashboard showing live Hub and synthetic-client metrics.
+Enable it by setting `MAP_WALKER_ADMIN_TOKEN` before starting the server:
+
+```bash
+MAP_WALKER_ADMIN_TOKEN=my-secret-token go run ./cmd/map-walker \
+  -synthetic-clients 50
+# open http://localhost:8080/admin — enter the token in the UI
+```
+
+The page polls `/api/admin/synthetic-stats` once per second.
+The token is kept only in `sessionStorage` (tab-scoped, cleared on tab close)
+and never sent to the server outside the `Authorization: Bearer` header.
+
 ## Architecture
 
 ```text
@@ -105,6 +140,8 @@ player IDs.
 | `PUT` | `/api/appearance` | Session | Update marker color/shape |
 | `GET` | `/ws` | Session | WebSocket upgrade |
 | `GET` | `/healthz` | No | Health check |
+| `GET` | `/admin` | — | Admin dashboard (404 if `MAP_WALKER_ADMIN_TOKEN` unset) |
+| `GET` | `/api/admin/synthetic-stats` | Bearer token | Aggregate Hub + synthetic metrics JSON (404 if token unset) |
 
 ## Run Tests
 

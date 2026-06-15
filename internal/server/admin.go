@@ -22,9 +22,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// admin.html is added in the next task; for now fall through to the static
-	// file handler which returns 404 until the file exists.
-	s.static.ServeHTTP(w, r)
+	http.ServeFile(w, r, "web/admin.html")
 }
 
 func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
