@@ -101,6 +101,24 @@ func (a *AOIIndex) VisibleNeighbors(playerID int64) []int64 {
 	return out
 }
 
+// QueryPlayerIDsNearPoint 返回指定点周围九格内的所有玩家 ID
+// 用于收集品反向扇出（spawn/collect 通知附近玩家）
+func (a *AOIIndex) QueryPlayerIDsNearPoint(lat, lng float64) []int64 {
+	localX, localY := a.config.latLngToLocal(lat, lng)
+	centerCell := a.config.localToCell(localX, localY)
+
+	var ids []int64
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			cell := CellCoord{X: centerCell.X + dx, Y: centerCell.Y + dy}
+			for id := range a.cells[cell] {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
+}
+
 func (a *AOIIndex) TakeStats() AOIStats {
 	stats := a.stats
 	a.stats = AOIStats{}

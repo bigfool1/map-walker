@@ -362,6 +362,34 @@ func TestAOIInsertMoveRemoveLifecycle(t *testing.T) {
 	}
 }
 
+func TestAOIQueryPlayerIDsNearPoint(t *testing.T) {
+	aoi := newTestAOI()
+	originLat, originLng := testConfig().SpawnLat, testConfig().SpawnLng
+
+	// 在原点插入一个玩家
+	aoi.Insert(1001, originLat, originLng)
+
+	// 500m 外插入另一个玩家
+	lat500, lng500 := localLatLng(aoi.config, 500, 0)
+	aoi.Insert(1002, lat500, lng500)
+
+	// 1200m 外插入第三个玩家（不同 cell）
+	lat1200, lng1200 := localLatLng(aoi.config, 1200, 0)
+	aoi.Insert(1003, lat1200, lng1200)
+
+	// 查询原点附近的玩家（九格扫描）
+	nearby := aoi.QueryPlayerIDsNearPoint(originLat, originLng)
+	if !contains(nearby, 1001) {
+		t.Fatal("expected player 1001 at origin to be found")
+	}
+	if !contains(nearby, 1002) {
+		t.Fatal("expected player 1002 at 500m to be in nine-cell scan")
+	}
+	if contains(nearby, 1003) {
+		t.Fatal("player 1003 at 1200m should not be in nine-cell scan from origin")
+	}
+}
+
 func newTestAOI() *AOIIndex {
 	return NewAOIIndex(AOIConfigFromWorld(testConfig()))
 }

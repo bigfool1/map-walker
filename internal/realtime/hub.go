@@ -46,9 +46,14 @@ type Hub struct {
 	persister          PositionPersister
 	collectibleField   *game.CollectibleField
 	scorePersister     ScorePersister
-	playerScores       map[int64]int64
-	syntheticPlayerIDs map[int64]struct{}
-	register           chan ClientSender
+	playerScores             map[int64]int64
+	syntheticPlayerIDs       map[int64]struct{}
+	visibleCollectibleIDs    map[int64]map[uint64]struct{}
+	pendingCollectEntered    map[int64][]CollectibleEnteredItem
+	pendingCollectLeftIDs    map[int64][]uint64
+	pendingCollectSpawned    map[int64][]CollectibleSpawnedItem
+	pendingCollectCollected  map[int64][]uint64
+	register                 chan ClientSender
 	unregister         chan ClientSender
 	inputs             chan inputEvent
 	appearanceUpdates  chan appearanceUpdateRequest
@@ -136,9 +141,14 @@ func newHub(
 		persister:          persister,
 		collectibleField:   collectibleField,
 		scorePersister:     scorePersister,
-		playerScores:       map[int64]int64{},
-		syntheticPlayerIDs: map[int64]struct{}{},
-		register:           make(chan ClientSender),
+		playerScores:            map[int64]int64{},
+		syntheticPlayerIDs:      map[int64]struct{}{},
+		visibleCollectibleIDs:   map[int64]map[uint64]struct{}{},
+		pendingCollectEntered:   map[int64][]CollectibleEnteredItem{},
+		pendingCollectLeftIDs:   map[int64][]uint64{},
+		pendingCollectSpawned:   map[int64][]CollectibleSpawnedItem{},
+		pendingCollectCollected: map[int64][]uint64{},
+		register:                make(chan ClientSender),
 		unregister:         make(chan ClientSender),
 		inputs:             make(chan inputEvent),
 		appearanceUpdates:  make(chan appearanceUpdateRequest),
@@ -308,6 +318,11 @@ func (h *Hub) insertPlayerIntoAOI(playerID int64) {
 func (h *Hub) clearPendingReplicationFor(playerID int64) {
 	delete(h.pendingAppearances, playerID)
 	delete(h.pendingLeft, playerID)
+	delete(h.pendingCollectEntered, playerID)
+	delete(h.pendingCollectLeftIDs, playerID)
+	delete(h.pendingCollectSpawned, playerID)
+	delete(h.pendingCollectCollected, playerID)
+	delete(h.visibleCollectibleIDs, playerID)
 }
 
 func (h *Hub) clearPendingLeftForPlayer(playerID int64) {
@@ -507,7 +522,113 @@ func (h *Hub) sendInitialization(client ClientSender) {
 	}
 	if ok := client.Send(collectibleData); !ok {
 		h.removeClient(client)
+		return
 	}
+
+	// 跟踪初始可见收集品 ID
+	if h.collectibleField != nil && len(visibleCollectibles) > 0 {
+		visible := make(map[uint64]struct{}, len(visibleCollectibles))
+		for _, c := range visibleCollectibles {
+			visible[c.ID] = struct{}{}
+		}
+		h.visibleCollectibleIDs[client.ID()] = visible
+	}
+}
+
+// advanceCollectibleReplacements 推进到期替换，反向扇出生成通知
+func (h *Hub) advanceCollectibleReplacements() {
+	spawned := h.collectibleField.AdvanceReplacements()
+	for _, c := range spawned {
+		nearbyPlayerIDs := h.aoi.QueryPlayerIDsNearPoint(c.Lat, c.Lng)
+		item := CollectibleSpawnedItem{ID: c.ID, RegionID: c.RegionID, Lat: c.Lat, Lng: c.Lng}
+		for _, playerID := range nearbyPlayerIDs {
+			if _, connected := h.clients[playerID]; !connected {
+				continue
+			}
+			if vis, ok := h.visibleCollectibleIDs[playerID]; ok {
+				vis[c.ID] = struct{}{}
+			}
+			h.pendingCollectSpawned[playerID] = append(h.pendingCollectSpawned[playerID], item)
+		}
+	}
+}
+
+// recalcCollectibleVisibility 为移动的玩家重新计算收集品可见性
+func (h *Hub) recalcCollectibleVisibility(movedIDs []int64) {
+	for _, playerID := range movedIDs {
+		if _, connected := h.clients[playerID]; !connected {
+			continue
+		}
+		position, ok := h.world.PlayerPosition(playerID)
+		if !ok {
+			continue
+		}
+
+		within500 := h.collectibleField.CollectiblesWithinRadius(position.Lat, position.Lng, 500)
+		within600Set := make(map[uint64]struct{})
+		within600List := h.collectibleField.CollectiblesWithinRadius(position.Lat, position.Lng, 600)
+		for _, c := range within600List {
+			within600Set[c.ID] = struct{}{}
+		}
+
+		prevVisible := h.visibleCollectibleIDs[playerID]
+		if prevVisible == nil {
+			prevVisible = map[uint64]struct{}{}
+		}
+
+		// 计算进入的（在 500m 内但之前不可见）
+		var entered []CollectibleEnteredItem
+		newVisible := make(map[uint64]struct{}, len(within500))
+		for _, c := range within500 {
+			newVisible[c.ID] = struct{}{}
+			if _, wasVisible := prevVisible[c.ID]; !wasVisible {
+				entered = append(entered, CollectibleEnteredItem{
+					ID: c.ID, RegionID: c.RegionID, Lat: c.Lat, Lng: c.Lng,
+				})
+			}
+		}
+
+		// 计算离开的（之前可见但不在 600m 内）
+		var leftIDs []uint64
+		for id := range prevVisible {
+			if _, stillVisible := within600Set[id]; !stillVisible {
+				leftIDs = append(leftIDs, id)
+			}
+		}
+
+		h.visibleCollectibleIDs[playerID] = newVisible
+
+		if len(entered) > 0 {
+			h.pendingCollectEntered[playerID] = append(h.pendingCollectEntered[playerID], entered...)
+		}
+		if len(leftIDs) > 0 {
+			h.pendingCollectLeftIDs[playerID] = append(h.pendingCollectLeftIDs[playerID], leftIDs...)
+		}
+	}
+}
+
+func (h *Hub) takePendingCollectEntered() map[int64][]CollectibleEnteredItem {
+	result := h.pendingCollectEntered
+	h.pendingCollectEntered = map[int64][]CollectibleEnteredItem{}
+	return result
+}
+
+func (h *Hub) takePendingCollectLeftIDs() map[int64][]uint64 {
+	result := h.pendingCollectLeftIDs
+	h.pendingCollectLeftIDs = map[int64][]uint64{}
+	return result
+}
+
+func (h *Hub) takePendingCollectSpawned() map[int64][]CollectibleSpawnedItem {
+	result := h.pendingCollectSpawned
+	h.pendingCollectSpawned = map[int64][]CollectibleSpawnedItem{}
+	return result
+}
+
+func (h *Hub) takePendingCollectCollected() map[int64][]uint64 {
+	result := h.pendingCollectCollected
+	h.pendingCollectCollected = map[int64][]uint64{}
+	return result
 }
 
 // playerScore 返回玩家当前内存分数
@@ -530,7 +651,19 @@ func (h *Hub) broadcastReplication() {
 	pendingLeft := h.takePendingLeft()
 	pendingAppearances := h.takePendingAppearances()
 
-	if len(movedIDs) == 0 && len(pendingEntered) == 0 && len(pendingLeft) == 0 && len(pendingAppearances) == 0 {
+	// 推进收集品替换并计算可见性变化
+	if h.collectibleField != nil {
+		h.advanceCollectibleReplacements()
+		h.recalcCollectibleVisibility(movedIDs)
+	}
+
+	collectEntered := h.takePendingCollectEntered()
+	collectLeft := h.takePendingCollectLeftIDs()
+	collectSpawned := h.takePendingCollectSpawned()
+	collectCollected := h.takePendingCollectCollected()
+
+	if len(movedIDs) == 0 && len(pendingEntered) == 0 && len(pendingLeft) == 0 && len(pendingAppearances) == 0 &&
+		len(collectEntered) == 0 && len(collectLeft) == 0 && len(collectSpawned) == 0 && len(collectCollected) == 0 {
 		return
 	}
 
@@ -605,6 +738,42 @@ func (h *Hub) broadcastReplication() {
 				})
 			}
 		}
+	}
+
+	// 收集品进入：按接收者累积
+	for recipientID, items := range collectEntered {
+		if _, connected := h.clients[recipientID]; !connected {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectiblesEntered = append(entry.CollectiblesEntered, items...)
+	}
+
+	// 收集品离开：按接收者 key 存储
+	for recipientID, ids := range collectLeft {
+		if _, connected := h.clients[recipientID]; !connected {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectibleIDsLeft = append(entry.CollectibleIDsLeft, ids...)
+	}
+
+	// 收集品生成：按接收者累积
+	for recipientID, items := range collectSpawned {
+		if _, connected := h.clients[recipientID]; !connected {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectiblesSpawned = append(entry.CollectiblesSpawned, items...)
+	}
+
+	// 收集品被拾取：按接收者累积
+	for recipientID, ids := range collectCollected {
+		if _, connected := h.clients[recipientID]; !connected {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectibleIDsCollected = append(entry.CollectibleIDsCollected, ids...)
 	}
 
 	// 编码并只发送给累积了变更的接收者
