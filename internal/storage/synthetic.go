@@ -122,42 +122,57 @@ type BulkCreateSyntheticUserParams struct {
 	InitialLng   float64
 }
 
+// 每批最多 500 行，确保 SQLite/MySQL 参数数在 SQLITE_MAX_VARIABLE_NUMBER 内
+const bulkCreateChunkSize = 500
+const bulkCreateColumns = 8
+
 func (db *DB) BulkCreateSyntheticUsers(params []BulkCreateSyntheticUserParams) (int, error) {
 	if len(params) == 0 {
 		return 0, nil
 	}
 
-	const row = "(?, ?, ?, ?, ?, ?, ?, ?)"
-	placeholders := make([]string, 0, len(params))
-	values := make([]any, 0, len(params)*8)
+	// 预展开行模板，避免每块重复分配
+	rowPlaceholders := make([]string, bulkCreateChunkSize)
+	for i := range rowPlaceholders {
+		rowPlaceholders[i] = "(?, ?, ?, ?, ?, ?, ?, ?)"
+	}
 
-	for _, p := range params {
-		normalized := strings.ToLower(p.Username)
-		appearance := appearanceOrDefault(p.Appearance)
-		placeholders = append(placeholders, row)
-		values = append(values,
-			p.Username,
-			normalized,
-			p.PasswordHash,
-			formatTime(p.CreatedAt),
-			p.InitialLat,
-			p.InitialLng,
-			appearance.Color,
-			appearance.Shape,
+	total := 0
+	for start := 0; start < len(params); start += bulkCreateChunkSize {
+		end := start + bulkCreateChunkSize
+		if end > len(params) {
+			end = len(params)
+		}
+		chunk := params[start:end]
+
+		values := make([]any, 0, len(chunk)*bulkCreateColumns)
+		for _, p := range chunk {
+			normalized := strings.ToLower(p.Username)
+			appearance := appearanceOrDefault(p.Appearance)
+			values = append(values,
+				p.Username,
+				normalized,
+				p.PasswordHash,
+				formatTime(p.CreatedAt),
+				p.InitialLat,
+				p.InitialLng,
+				appearance.Color,
+				appearance.Shape,
+			)
+		}
+
+		query := fmt.Sprintf(
+			`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
+			 VALUES %s`,
+			strings.Join(rowPlaceholders[:len(chunk)], ", "),
 		)
-	}
 
-	query := fmt.Sprintf(
-		`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
-		 VALUES %s`,
-		strings.Join(placeholders, ", "),
-	)
-
-	_, err := db.Exec(query, values...)
-	if err != nil {
-		return 0, fmt.Errorf("bulk create synthetic users: %w", err)
+		if _, err := db.Exec(query, values...); err != nil {
+			return total, fmt.Errorf("bulk create synthetic users: %w", err)
+		}
+		total += len(chunk)
 	}
-	return len(params), nil
+	return total, nil
 }
 
 type BulkPositionEntry struct {
@@ -171,21 +186,28 @@ func (db *DB) BulkUpdateAppearances(userIDs []int64, appearance Appearance) erro
 		return nil
 	}
 
-	placeholders := make([]string, len(userIDs))
-	args := make([]any, 0, len(userIDs)+2)
-	args = append(args, appearance.Color, appearance.Shape)
-	for i, id := range userIDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
+	for start := 0; start < len(userIDs); start += bulkCreateChunkSize {
+		end := start + bulkCreateChunkSize
+		if end > len(userIDs) {
+			end = len(userIDs)
+		}
+		chunk := userIDs[start:end]
 
-	query := fmt.Sprintf(
-		`UPDATE users SET appearance_color = ?, appearance_shape = ? WHERE id IN (%s)`,
-		strings.Join(placeholders, ", "),
-	)
-	_, err := db.Exec(query, args...)
-	if err != nil {
-		return fmt.Errorf("bulk update appearances: %w", err)
+		placeholders := make([]string, len(chunk))
+		args := make([]any, 0, len(chunk)+2)
+		args = append(args, appearance.Color, appearance.Shape)
+		for i, id := range chunk {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+
+		query := fmt.Sprintf(
+			`UPDATE users SET appearance_color = ?, appearance_shape = ? WHERE id IN (%s)`,
+			strings.Join(placeholders, ", "),
+		)
+		if _, err := db.Exec(query, args...); err != nil {
+			return fmt.Errorf("bulk update appearances: %w", err)
+		}
 	}
 	return nil
 }
