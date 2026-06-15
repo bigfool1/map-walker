@@ -6,8 +6,13 @@ on-demand online leaderboard. Hub actor owns all state; synthetic bots exercise
 AOI/replication at scale.
 
 Design docs and plans are in `docs/superpowers/specs/` and
-`docs/superpowers/plans/`. Phase history (AOI, replication fan-out, MySQL batch
-persistence, synthetic clients, collectible world) is in git log.
+`docs/superpowers/plans/`. Earlier phase history is in git log.
+
+**Most recently completed plan:**
+`docs/superpowers/plans/2026-06-15-persistent-collectible-world.md` — all 11
+tasks done. Collectible field, score persistence, protocol freeze, Hub
+integration, AOI replication, authoritative pickup, leaderboard, frontend,
+scale regression, and documentation.
 
 ## Quick Start & Test
 
