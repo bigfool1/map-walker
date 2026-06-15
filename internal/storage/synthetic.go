@@ -113,6 +113,53 @@ func (db *DB) createSyntheticUser(params PrepareSyntheticUserParams, normalized 
 	}, nil
 }
 
+type BulkCreateSyntheticUserParams struct {
+	Username     string
+	PasswordHash string
+	CreatedAt    time.Time
+	Appearance   Appearance
+	InitialLat   float64
+	InitialLng   float64
+}
+
+func (db *DB) BulkCreateSyntheticUsers(params []BulkCreateSyntheticUserParams) (int, error) {
+	if len(params) == 0 {
+		return 0, nil
+	}
+
+	const row = "(?, ?, ?, ?, ?, ?, ?, ?)"
+	placeholders := make([]string, 0, len(params))
+	values := make([]any, 0, len(params)*8)
+
+	for _, p := range params {
+		normalized := strings.ToLower(p.Username)
+		appearance := appearanceOrDefault(p.Appearance)
+		placeholders = append(placeholders, row)
+		values = append(values,
+			p.Username,
+			normalized,
+			p.PasswordHash,
+			formatTime(p.CreatedAt),
+			p.InitialLat,
+			p.InitialLng,
+			appearance.Color,
+			appearance.Shape,
+		)
+	}
+
+	query := fmt.Sprintf(
+		`INSERT INTO users (username, username_normalized, password_hash, created_at, last_lat, last_lng, appearance_color, appearance_shape)
+		 VALUES %s`,
+		strings.Join(placeholders, ", "),
+	)
+
+	_, err := db.Exec(query, values...)
+	if err != nil {
+		return 0, fmt.Errorf("bulk create synthetic users: %w", err)
+	}
+	return len(params), nil
+}
+
 func scanSyntheticUserRecord(rows *sql.Rows) (SyntheticUserRecord, error) {
 	var record SyntheticUserRecord
 	var lastLat, lastLng sql.NullFloat64

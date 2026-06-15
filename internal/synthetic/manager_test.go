@@ -580,6 +580,19 @@ func TestManagerAutoProvisionPartialFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+
+	// 预创建 account 1，确保它走矫正路径（不受批量创建全部失败影响）
+	if _, err := db.CreateUser(storage.User{
+		Username:           "synthetic_1",
+		UsernameNormalized: "synthetic_1",
+		PasswordHash:       "existing-hash",
+		CreatedAt:          now,
+		Appearance:         FixedAppearance(),
+	}); err != nil {
+		t.Fatalf("create existing user failed: %v", err)
+	}
+
 	provisioner := newTestProvisioner(db)
 	provisioner.Store = &faultInjectStore{
 		db: db,

@@ -188,6 +188,20 @@ func TestProvisionerIgnoresInvalidPrefixMatches(t *testing.T) {
 
 func TestProvisionerContinuesAfterIndividualFailures(t *testing.T) {
 	db := openProvisionerTestDB(t)
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+
+	// 预先创建 account 2（带错误外观，方便矫正路径触发失败）
+	_, err := db.CreateUser(storage.User{
+		Username:           "synthetic_2",
+		UsernameNormalized: "synthetic_2",
+		PasswordHash:       "existing-hash",
+		CreatedAt:          now,
+		Appearance:         storage.Appearance{Color: "#ffffff", Shape: "circle"},
+	})
+	if err != nil {
+		t.Fatalf("create existing user failed: %v", err)
+	}
+
 	provisioner := newTestProvisioner(db)
 	provisioner.Store = &faultInjectStore{
 		db: db,
@@ -264,6 +278,17 @@ func (s *faultInjectStore) PrepareSyntheticUser(params storage.PrepareSyntheticU
 		}
 	}
 	return s.db.PrepareSyntheticUser(params)
+}
+
+func (s *faultInjectStore) BulkCreateSyntheticUsers(params []storage.BulkCreateSyntheticUserParams) (int, error) {
+	for _, p := range params {
+		if accountNumber, ok := ParseUsername(p.Username); ok {
+			if err, failed := s.failAccounts[accountNumber]; failed {
+				return 0, err
+			}
+		}
+	}
+	return s.db.BulkCreateSyntheticUsers(params)
 }
 
 func (s *faultInjectStore) GetUserPosition(userID int64) (float64, float64, bool, error) {
