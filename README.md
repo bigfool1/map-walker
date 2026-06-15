@@ -15,7 +15,7 @@ go run ./cmd/map-walker
 # open http://localhost:8080 — register or log in, then move
 ```
 
-Custom host/port, MySQL, or collectible region configuration:
+Flags and environment variables:
 
 ```bash
 go run ./cmd/map-walker -host 127.0.0.1 -port 3000
@@ -25,7 +25,22 @@ go run ./cmd/map-walker -collectible-regions my-regions.json
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-collectible-regions` | `config/collectible-regions.json` | Collectible region configuration file |
+| `-host` | `0.0.0.0` | 监听地址 |
+| `-port` | `8080` | 监听端口 |
+| `-db-driver` | `sqlite` (or `$DB_DRIVER`) | 数据库驱动 (`sqlite` / `mysql`) |
+| `-db-dsn` | `data/map-walker.db` (or `$DB_DSN`) | 数据库 DSN |
+| `-collectible-regions` | `config/collectible-regions.json` | 收集品区域配置文件 |
+| `-synthetic-clients` | `0` | 合成客户端数量 (0 = 禁用) |
+| `-synthetic-ramp-rate` | `10` | 合成客户端每秒激活速率 |
+| `-synthetic-auto-provision` | `false` | 自动注册合成客户端账号 |
+
+环境变量（优先级低于命令行 flag）：
+
+| Variable | Description |
+|----------|-------------|
+| `DB_DRIVER` | `-db-driver` 的默认值 |
+| `DB_DSN` | `-db-dsn` 的默认值 |
+| `MAP_WALKER_SYNTHETIC_PASSWORD` | 合成客户端自动注册时的密码 |
 
 Database is created automatically on first run (`data/map-walker.db` for SQLite).
 Press **Ctrl+C** for graceful shutdown — all online positions are saved before exit.
@@ -39,19 +54,13 @@ Pre-provisioned bot accounts that connect over WebSocket and wander the map,
 exercising AOI and replication at scale without needing real users:
 
 ```bash
-# 50 bots ramp up at 5/s using accounts already in the database
-go run ./cmd/map-walker -synthetic-clients 50 -synthetic-ramp-rate 5
+# 50 bots ramp up at 10/s using accounts already in the database
+go run ./cmd/map-walker -synthetic-clients 50 -synthetic-ramp-rate 10
 
 # 50 bots with automatic account provisioning
 MAP_WALKER_SYNTHETIC_PASSWORD=secret go run ./cmd/map-walker \
   -synthetic-clients 50 -synthetic-auto-provision
 ```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-synthetic-clients N` | `0` (disabled) | Number of synthetic bot clients to maintain |
-| `-synthetic-ramp-rate N` | `5` | Connections per second during ramp-up |
-| `-synthetic-auto-provision` | `false` | Register bot accounts automatically |
 
 ### Admin page
 
@@ -64,6 +73,23 @@ go run ./cmd/map-walker -synthetic-clients 50
 ```
 
 The page polls `/api/stats/synthetic` once per second.
+
+## Docker Deployment
+
+```bash
+# 构建并启动（含 MySQL）
+./build.sh
+
+# 或手动
+docker compose up -d
+```
+
+`docker-compose.yml` 启动两个服务：`map-walker`（Go 应用）和 `mysql`（MySQL 8.0）。
+数据库驱动和 DSN 通过环境变量注入：
+
+```bash
+MYSQL_ROOT_PASSWORD=secret MYSQL_PASSWORD=secret DB_DSN=mapwalker:secret@tcp(mysql:3306)/mapwalkerdb docker compose up -d
+```
 
 ## Collectible Gameplay
 

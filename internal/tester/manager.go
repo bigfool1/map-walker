@@ -106,9 +106,6 @@ func (m *Manager) generateSessions() {
 }
 
 func (m *Manager) rampUp(ctx context.Context) {
-	m.clients = make([]*Client, m.cfg.TargetCount)
-	m.behaviors = make([]*synthetic.Behavior, m.cfg.TargetCount)
-
 	placementCfg := synthetic.DefaultPlacementConfig()
 	behaviorCfg := synthetic.DefaultBehaviorConfig()
 
@@ -239,12 +236,14 @@ func (m *Manager) Run() {
 	// 2. 生成会话
 	m.generateSessions()
 
-	// 3. 启动连接（内部初始化 clients/behaviors 数组）
-	m.rampUp(ctx)
+	// 3. 预分配 clients/behaviors 数组，rampUp 按需填充
+	m.clients = make([]*Client, m.cfg.TargetCount)
+	m.behaviors = make([]*synthetic.Behavior, m.cfg.TargetCount)
 
-	// 4. 启动 tick 和 stats 循环
+	// 4. 先启动 tick/stats，再 rampUp——连上一个就开始发 input
 	go m.tickLoop(ctx)
 	go m.statsLoop(ctx)
+	m.rampUp(ctx)
 
 	// 5. 等待退出信号
 	sigCh := make(chan os.Signal, 1)
