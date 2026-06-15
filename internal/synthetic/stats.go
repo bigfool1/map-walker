@@ -6,31 +6,31 @@ import "time"
 // second by the Manager. Reads are safe from any goroutine.
 type SyntheticSnapshot struct {
 	// Gauges
-	Target         int
-	Provisioning   int // slots waiting for auto-provision result
-	Provisioned    int // slots with identity, waiting for ramp-up
-	Activating     int
-	Active         int
-	Moving         int    // active clients with a non-neutral input
-	Idle           int    // active clients with neutral input
-	Failed         int
-	QueueHighWater uint32 // max seen across all clients, including removed ones
+	TargetCount    int    `json:"targetCount"`
+	Provisioning   int    `json:"provisioning"`
+	Provisioned    int    `json:"provisioned"`
+	ActivatingCount int   `json:"activatingCount"`
+	ActiveCount    int    `json:"activeCount"`
+	MovingCount    int    `json:"movingCount"`
+	IdleCount      int    `json:"idleCount"`
+	FailedCount    int    `json:"failedCount"`
+	QueueHighWater uint32 `json:"queueHighWater"`
 
 	// Rates over the last completed one-second interval
-	InputsRate      uint64
-	MessagesRate    uint64
-	BytesRate       uint64
-	DisconnectsRate uint64
-	QueueFullRate   uint64
+	InputsPerSecond      uint64 `json:"inputsPerSecond"`
+	MessagesPerSecond    uint64 `json:"messagesPerSecond"`
+	BytesPerSecond       uint64 `json:"bytesPerSecond"`
+	DisconnectsPerSecond uint64 `json:"disconnectsPerSecond"`
+	QueueFullPerSecond   uint64 `json:"queueFullPerSecond"`
 
 	// Lifetime totals
-	TotalActivated   uint64
-	TotalFailed      uint64
-	TotalDisconnects uint64
-	TotalQueueFull   uint64
-	TotalInputs      uint64
-	TotalMessages    uint64
-	TotalBytes       uint64
+	TotalActivated   uint64 `json:"totalActivated"`
+	TotalFailed      uint64 `json:"totalFailed"`
+	TotalDisconnects uint64 `json:"totalDisconnects"`
+	TotalQueueFull   uint64 `json:"totalQueueFull"`
+	TotalInputs      uint64 `json:"totalInputs"`
+	TotalMessages    uint64 `json:"totalMessages"`
+	TotalBytes       uint64 `json:"totalBytes"`
 
-	SampledAt time.Time
+	SampledAt time.Time `json:"sampledAt"`
 }

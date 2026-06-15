@@ -12,7 +12,6 @@ type Server struct {
 	hub               *realtime.Hub
 	auth              *auth.Service
 	static            http.Handler
-	adminToken        string
 	hubSnapshot       func() *realtime.HubSnapshot
 	syntheticSnapshot func() *synthetic.SyntheticSnapshot
 }
@@ -25,14 +24,12 @@ func New(hub *realtime.Hub, authService *auth.Service) *Server {
 	}
 }
 
-// WithAdmin configures the optional admin token and snapshot providers.
+// WithAdmin configures snapshot providers for the admin dashboard.
 // Call before Routes(). Returns the receiver for chaining.
 func (s *Server) WithAdmin(
-	token string,
 	hubFn func() *realtime.HubSnapshot,
 	synFn func() *synthetic.SyntheticSnapshot,
 ) *Server {
-	s.adminToken = token
 	s.hubSnapshot = hubFn
 	s.syntheticSnapshot = synFn
 	return s
@@ -48,8 +45,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/appearance", s.handleAppearance)
 	mux.HandleFunc("/api/leaderboard/online", s.handleLeaderboard)
 	mux.HandleFunc("/ws", s.handleWebSocket)
-	mux.HandleFunc("/admin", s.handleAdmin)
-	mux.HandleFunc("/api/admin/synthetic-stats", s.handleAdminStats)
+	mux.HandleFunc("/stats", s.handleStats)
+	mux.HandleFunc("/api/stats/synthetic", s.handleStatsAPI)
 	mux.Handle("/", s.static)
 	return mux
 }

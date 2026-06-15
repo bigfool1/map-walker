@@ -35,17 +35,17 @@ func TestSnapshotGaugesAfterActivation(t *testing.T) {
 	if snap == nil {
 		t.Fatal("expected non-nil snapshot after stats tick")
 	}
-	if snap.Target != 2 {
-		t.Errorf("Target=%d want 2", snap.Target)
+	if snap.TargetCount != 2 {
+		t.Errorf("TargetCount=%d want 2", snap.TargetCount)
 	}
-	if snap.Active != 2 {
-		t.Errorf("Active=%d want 2", snap.Active)
+	if snap.ActiveCount != 2 {
+		t.Errorf("ActiveCount=%d want 2", snap.ActiveCount)
 	}
-	if snap.Activating != 0 {
-		t.Errorf("Activating=%d want 0", snap.Activating)
+	if snap.ActivatingCount != 0 {
+		t.Errorf("ActivatingCount=%d want 0", snap.ActivatingCount)
 	}
-	if snap.Failed != 0 {
-		t.Errorf("Failed=%d want 0", snap.Failed)
+	if snap.FailedCount != 0 {
+		t.Errorf("FailedCount=%d want 0", snap.FailedCount)
 	}
 	if snap.SampledAt.IsZero() {
 		t.Error("SampledAt is zero")
@@ -73,8 +73,8 @@ func TestSnapshotMovingAndIdleGauges(t *testing.T) {
 	if snap == nil {
 		t.Fatal("nil snapshot")
 	}
-	if snap.Moving+snap.Idle != snap.Active {
-		t.Errorf("Moving(%d)+Idle(%d) != Active(%d)", snap.Moving, snap.Idle, snap.Active)
+	if snap.MovingCount+snap.IdleCount != snap.ActiveCount {
+		t.Errorf("MovingCount(%d)+IdleCount(%d) != ActiveCount(%d)", snap.MovingCount, snap.IdleCount, snap.ActiveCount)
 	}
 }
 
@@ -137,11 +137,11 @@ func TestSnapshotRatesReflectLastInterval(t *testing.T) {
 		snap := env.manager.Snapshot()
 		if snap.TotalMessages > first.TotalMessages {
 			// The rate in this interval must also be non-zero.
-			if snap.MessagesRate == 0 {
-				t.Error("MessagesRate=0 despite TotalMessages growing")
+			if snap.MessagesPerSecond == 0 {
+				t.Error("MessagesPerSecond=0 despite TotalMessages growing")
 			}
-			if snap.BytesRate == 0 {
-				t.Error("BytesRate=0 despite TotalBytes growing")
+			if snap.BytesPerSecond == 0 {
+				t.Error("BytesPerSecond=0 despite TotalBytes growing")
 			}
 			return
 		}
@@ -244,7 +244,7 @@ func TestSnapshotConcurrentReads(t *testing.T) {
 			if snap == nil {
 				return
 			}
-			_ = snap.Active
+			_ = snap.ActiveCount
 			_ = snap.TotalMessages
 		}()
 	}

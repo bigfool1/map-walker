@@ -3,29 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Map Walker Admin</title>
-  <link rel="stylesheet" href="/admin.css" />
+  <title>Map Walker Stats</title>
+  <link rel="stylesheet" href="/stats.css" />
 </head>
 <body>
   <header>
-    <h1>Map Walker Admin</h1>
+    <h1>Map Walker Stats</h1>
     <div id="status-dot" class="dot dot-gray" title="Not connected"></div>
   </header>
 
-  <section id="auth-section">
-    <p class="auth-hint">Enter the admin token to connect.</p>
-    <form id="token-form">
-      <input id="token-input" type="password" placeholder="Bearer token" autocomplete="off" spellcheck="false" />
-      <button type="submit">Connect</button>
-    </form>
-    <p id="auth-error" class="auth-error hidden"></p>
-  </section>
-
-  <main id="stats-section" class="hidden">
-    <div class="stats-header">
-      <span id="sampled-at" class="sampled-at"></span>
-      <button id="disconnect-btn" class="btn-secondary">Disconnect</button>
-    </div>
+  <main id="stats-section">
+    <span id="sampled-at" class="sampled-at"></span>
 
     <section class="panel">
       <h2>Hub <span class="panel-sub">all clients</span></h2>
@@ -127,6 +115,6 @@
     </section>
   </main>
 
-  <script src="/admin.js"></script>
+  <script src="/stats.js"></script>
 </body>
 </html>

@@ -124,7 +124,7 @@ body {
 
 .account-ctrl {
   position: fixed;
-  top: 12px;
+  top: 8vh;
   right: 16px;
   z-index: 1000;
   color: #1b1f23;
@@ -408,7 +408,7 @@ body {
 .joystick {
   position: fixed;
   left: 20px;
-  bottom: 36px;
+  bottom: 12vh;
   z-index: 2000;
   touch-action: none;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
@@ -530,7 +530,7 @@ body {
 .pickup-btn {
   position: fixed;
   right: 20px;
-  bottom: 40px;
+  bottom: 12vh;
   z-index: 2000;
   width: 64px;
   height: 64px;
@@ -563,7 +563,7 @@ body {
 
 .leaderboard-panel {
   position: fixed;
-  top: 100px;
+  top: calc(8vh + 88px);
   right: 16px;
   z-index: 2000;
   width: 220px;
@@ -639,7 +639,7 @@ body {
 
 .leaderboard-toggle {
   position: fixed;
-  top: 12px;
+  top: 8vh;
   right: 164px;
   z-index: 1001;
   border: 1px solid rgba(0, 0, 0, 0.18);

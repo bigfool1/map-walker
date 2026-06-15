@@ -161,8 +161,8 @@ web/                  — Leaflet frontend, auth card, appearance editor, gems, 
 | PUT | `/api/appearance` | Session | Update marker color/shape |
 | GET | `/api/leaderboard/online` | Session | Online Top 5 + self rank |
 | GET | `/ws` | Session | WebSocket upgrade |
-| GET | `/admin` | Bearer | Dashboard (404 if token unset) |
-| GET | `/api/admin/synthetic-stats` | Bearer | Hub + synthetic metrics JSON |
+| GET | `/stats` | — | Stats dashboard |
+| GET | `/api/stats/synthetic` | — | Hub + synthetic metrics JSON |
 
 ## Flags
 

@@ -562,21 +562,21 @@ func (l *managerLoop) onStatsTick() {
 	l.prevQueueFull = l.totalQueueFull
 
 	snap := &SyntheticSnapshot{
-		Target:         l.cfg.TargetCount,
+		TargetCount:    l.cfg.TargetCount,
 		Provisioning:   provisioning,
 		Provisioned:    provisioned,
-		Activating:     activating,
-		Active:         active,
-		Moving:         moving,
-		Idle:           idle,
-		Failed:         failed,
+		ActivatingCount: activating,
+		ActiveCount:    active,
+		MovingCount:    moving,
+		IdleCount:      idle,
+		FailedCount:    failed,
 		QueueHighWater: maxHW,
 
-		InputsRate:      inputsRate,
-		MessagesRate:    messagesRate,
-		BytesRate:       bytesRate,
-		DisconnectsRate: disconnectsRate,
-		QueueFullRate:   queueFullRate,
+		InputsPerSecond:      inputsRate,
+		MessagesPerSecond:    messagesRate,
+		BytesPerSecond:       bytesRate,
+		DisconnectsPerSecond: disconnectsRate,
+		QueueFullPerSecond:   queueFullRate,
 
 		TotalActivated:   l.totalActivated,
 		TotalFailed:      uint64(failed),

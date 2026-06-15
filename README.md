@@ -42,8 +42,8 @@ exercising AOI and replication at scale without needing real users:
 # 50 bots ramp up at 5/s using accounts already in the database
 go run ./cmd/map-walker -synthetic-clients 50 -synthetic-ramp-rate 5
 
-# 50 bots with automatic account provisioning (requires admin password)
-MAP_WALKER_ADMIN_PASSWORD=secret go run ./cmd/map-walker \
+# 50 bots with automatic account provisioning
+MAP_WALKER_SYNTHETIC_PASSWORD=secret go run ./cmd/map-walker \
   -synthetic-clients 50 -synthetic-auto-provision
 ```
 
@@ -56,17 +56,14 @@ MAP_WALKER_ADMIN_PASSWORD=secret go run ./cmd/map-walker \
 ### Admin page
 
 A read-only operator dashboard showing live Hub and synthetic-client metrics.
-Enable it by setting `MAP_WALKER_ADMIN_TOKEN` before starting the server:
+Always available at `/stats`:
 
 ```bash
-MAP_WALKER_ADMIN_TOKEN=my-secret-token go run ./cmd/map-walker \
-  -synthetic-clients 50
-# open http://localhost:8080/admin — enter the token in the UI
+go run ./cmd/map-walker -synthetic-clients 50
+# open http://localhost:8080/stats
 ```
 
-The page polls `/api/admin/synthetic-stats` once per second.
-The token is kept only in `sessionStorage` (tab-scoped, cleared on tab close)
-and never sent to the server outside the `Authorization: Bearer` header.
+The page polls `/api/stats/synthetic` once per second.
 
 ## Collectible Gameplay
 
@@ -183,8 +180,8 @@ player IDs, positions, scores, and synthetic identity.
 | `GET` | `/api/leaderboard/online` | Session | Online Top 5 + self rank |
 | `GET` | `/ws` | Session | WebSocket upgrade |
 | `GET` | `/healthz` | No | Health check |
-| `GET` | `/admin` | — | Admin dashboard (404 if `MAP_WALKER_ADMIN_TOKEN` unset) |
-| `GET` | `/api/admin/synthetic-stats` | Bearer token | Aggregate Hub + synthetic metrics JSON (404 if token unset) |
+| `GET` | `/stats` | — | Stats dashboard |
+| `GET` | `/api/stats/synthetic` | — | Aggregate Hub + synthetic metrics JSON |
 
 ## Run Tests
 
