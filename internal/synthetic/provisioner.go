@@ -14,6 +14,8 @@ type userStore interface {
 	LoadSyntheticUsers() ([]storage.SyntheticUserRecord, error)
 	PrepareSyntheticUser(params storage.PrepareSyntheticUserParams) (storage.PrepareSyntheticUserResult, error)
 	BulkCreateSyntheticUsers(params []storage.BulkCreateSyntheticUserParams) (int, error)
+	BulkUpdateAppearances(userIDs []int64, appearance storage.Appearance) error
+	BulkInitializePositions(entries []storage.BulkPositionEntry) error
 	GetUserPosition(userID int64) (lat, lng float64, ok bool, err error)
 }
 
@@ -55,11 +57,10 @@ func NewProvisioner(db *storage.DB) *Provisioner {
 }
 
 func (p *Provisioner) Provision(ctx context.Context, count, workers int, password string) (ProvisionResult, error) {
+	_ = ctx
+	_ = workers
 	if count < 0 {
 		return ProvisionResult{}, fmt.Errorf("count must be non-negative")
-	}
-	if workers < 1 {
-		return ProvisionResult{}, fmt.Errorf("workers must be at least 1")
 	}
 	if count == 0 {
 		return ProvisionResult{}, nil
@@ -86,7 +87,7 @@ func (p *Provisioner) Provision(ctx context.Context, count, workers int, passwor
 		}
 	}
 
-	// 阶段 1：并发 hash 密码 + 批量创建
+	// 阶段 1：一次 hash + 批量创建
 	if len(toCreate) > 0 {
 		if err := p.validatePassword(password); err != nil {
 			for _, n := range toCreate {
@@ -96,52 +97,34 @@ func (p *Provisioner) Provision(ctx context.Context, count, workers int, passwor
 			return result, nil
 		}
 
-		type createEntry struct {
-			accountNumber int
-			name          string
-			passwordHash  string
-			lat, lng      float64
+		passwordHash, err := p.hashPassword(password)
+		if err != nil {
+			for _, n := range toCreate {
+				accounts[n-1].Err = err
+			}
+			result := ProvisionResult{Accounts: accounts, Failed: len(toCreate)}
+			return result, nil
 		}
-		entries := make([]createEntry, len(toCreate))
 
-		var hashWg sync.WaitGroup
-		hashSem := make(chan struct{}, workers)
-		for i, accountNumber := range toCreate {
-			hashWg.Add(1)
-			go func(idx, n int) {
-				defer hashWg.Done()
-				hashSem <- struct{}{}
-				defer func() { <-hashSem }()
-				hash, _ := p.hashPassword(password)
-				lat, lng := PlacementLatLng(p.Placement, n)
-				entries[idx] = createEntry{
-					accountNumber: n,
-					name:          FormatUsername(n),
-					passwordHash:  hash,
-					lat:           lat,
-					lng:           lng,
-				}
-			}(i, accountNumber)
-		}
-		hashWg.Wait()
-
-		bulkParams := make([]storage.BulkCreateSyntheticUserParams, 0, len(entries))
-		for _, entry := range entries {
+		bulkParams := make([]storage.BulkCreateSyntheticUserParams, 0, len(toCreate))
+		for _, accountNumber := range toCreate {
+			lat, lng := PlacementLatLng(p.Placement, accountNumber)
 			bulkParams = append(bulkParams, storage.BulkCreateSyntheticUserParams{
-				Username:     entry.name,
-				PasswordHash: entry.passwordHash,
+				Username:     FormatUsername(accountNumber),
+				PasswordHash: passwordHash,
 				CreatedAt:    p.Now().UTC(),
 				Appearance:   FixedAppearance(),
-				InitialLat:   entry.lat,
-				InitialLng:   entry.lng,
+				InitialLat:   lat,
+				InitialLng:   lng,
 			})
 		}
 
 		created, bulkErr := p.bulkCreateSyntheticUsers(bulkParams)
-		for _, entry := range entries {
-			idx := entry.accountNumber - 1
-			accounts[idx].Lat = entry.lat
-			accounts[idx].Lng = entry.lng
+		for _, accountNumber := range toCreate {
+			lat, lng := PlacementLatLng(p.Placement, accountNumber)
+			idx := accountNumber - 1
+			accounts[idx].Lat = lat
+			accounts[idx].Lng = lng
 			if bulkErr != nil {
 				accounts[idx].Err = bulkErr
 			} else {
@@ -151,20 +134,67 @@ func (p *Provisioner) Provision(ctx context.Context, count, workers int, passwor
 		_ = created
 	}
 
-	// 阶段 2：矫正已存在账户（个数少，因无需 hash 密码故可直接并发）
-	var corrWg sync.WaitGroup
-	corrSem := make(chan struct{}, workers)
-	for _, accountNumber := range toCorrect {
-		corrWg.Add(1)
-		go func(n int) {
-			defer corrWg.Done()
-			corrSem <- struct{}{}
-			defer func() { <-corrSem }()
-			accounts[n-1] = p.correctAccount(existing[n])
-		}(accountNumber)
-	}
-	corrWg.Wait()
+	// 阶段 2：批量矫正已存在账户
+	if len(toCorrect) > 0 {
+		var needAppearance []int64
+		var needPosition []storage.BulkPositionEntry
 
+		for _, accountNumber := range toCorrect {
+			ex := existing[accountNumber]
+			lat, lng := PlacementLatLng(p.Placement, accountNumber)
+			idx := accountNumber - 1
+			accounts[idx].AccountNumber = accountNumber
+			accounts[idx].Username = ex.Username
+			accounts[idx].UserID = ex.UserID
+			accounts[idx].Lat = ex.Lat
+			accounts[idx].Lng = ex.Lng
+
+			if ex.Appearance != FixedAppearance() {
+				needAppearance = append(needAppearance, ex.UserID)
+			}
+			if !ex.HasPosition {
+				needPosition = append(needPosition, storage.BulkPositionEntry{
+					UserID: ex.UserID,
+					Lat:    lat,
+					Lng:    lng,
+				})
+				accounts[idx].Lat = lat
+				accounts[idx].Lng = lng
+			}
+
+			if ex.Appearance == FixedAppearance() && ex.HasPosition {
+				accounts[idx].Reused = true
+			} else {
+				accounts[idx].Corrected = true
+			}
+		}
+
+		p.dbMu.Lock()
+		if appErr := p.Store.BulkUpdateAppearances(needAppearance, FixedAppearance()); appErr != nil {
+			p.dbMu.Unlock()
+			failAccounts(accounts, toCorrect, appErr)
+			return summarize(accounts), nil
+		}
+		if posErr := p.Store.BulkInitializePositions(needPosition); posErr != nil {
+			p.dbMu.Unlock()
+			failAccounts(accounts, toCorrect, posErr)
+			return summarize(accounts), nil
+		}
+		p.dbMu.Unlock()
+	}
+
+	return summarize(accounts), nil
+}
+
+func failAccounts(accounts []AccountReadiness, target []int, err error) {
+	for _, accountNumber := range target {
+		accounts[accountNumber-1].Err = err
+		accounts[accountNumber-1].Corrected = false
+		accounts[accountNumber-1].Reused = false
+	}
+}
+
+func summarize(accounts []AccountReadiness) ProvisionResult {
 	result := ProvisionResult{Accounts: accounts}
 	for _, account := range accounts {
 		switch {
@@ -178,7 +208,7 @@ func (p *Provisioner) Provision(ctx context.Context, count, workers int, passwor
 			result.Reused++
 		}
 	}
-	return result, nil
+	return result
 }
 
 func (p *Provisioner) indexExisting() (map[int]storage.SyntheticUserRecord, error) {
@@ -198,61 +228,6 @@ func (p *Provisioner) indexExisting() (map[int]storage.SyntheticUserRecord, erro
 	return indexed, nil
 }
 
-func (p *Provisioner) correctAccount(
-	existing storage.SyntheticUserRecord,
-) AccountReadiness {
-	readiness := AccountReadiness{
-		AccountNumber: 0,
-		Username:      existing.Username,
-	}
-
-	params := storage.PrepareSyntheticUserParams{
-		ID:         existing.UserID,
-		Username:   existing.Username,
-		CreatedAt:  p.Now().UTC(),
-		Appearance: FixedAppearance(),
-	}
-
-	result, err := p.prepareSyntheticUser(params)
-	if err != nil {
-		readiness.Err = err
-		return readiness
-	}
-
-	accountNumber, _ := ParseUsername(existing.Username)
-	readiness.AccountNumber = accountNumber
-	readiness.UserID = result.UserID
-	readiness.Lat, readiness.Lng = p.resolveExistingPosition(existing, result)
-	switch {
-	case result.Created:
-	case result.AppearanceCorrected || result.PositionInitialized:
-		readiness.Corrected = true
-	default:
-		readiness.Reused = true
-	}
-	return readiness
-}
-
-func (p *Provisioner) resolveExistingPosition(
-	existing storage.SyntheticUserRecord,
-	result storage.PrepareSyntheticUserResult,
-) (float64, float64) {
-	if existing.HasPosition && !result.PositionInitialized {
-		return existing.Lat, existing.Lng
-	}
-	lat, lng, ok, err := p.getUserPosition(result.UserID)
-	if err == nil && ok {
-		return lat, lng
-	}
-	return 0, 0
-}
-
-func (p *Provisioner) bulkCreateSyntheticUsers(params []storage.BulkCreateSyntheticUserParams) (int, error) {
-	p.dbMu.Lock()
-	defer p.dbMu.Unlock()
-	return p.Store.BulkCreateSyntheticUsers(params)
-}
-
 func (p *Provisioner) validatePassword(password string) error {
 	if p.ValidatePassword != nil {
 		return p.ValidatePassword(password)
@@ -267,14 +242,8 @@ func (p *Provisioner) hashPassword(password string) (string, error) {
 	return auth.HashPassword(password)
 }
 
-func (p *Provisioner) prepareSyntheticUser(params storage.PrepareSyntheticUserParams) (storage.PrepareSyntheticUserResult, error) {
+func (p *Provisioner) bulkCreateSyntheticUsers(params []storage.BulkCreateSyntheticUserParams) (int, error) {
 	p.dbMu.Lock()
 	defer p.dbMu.Unlock()
-	return p.Store.PrepareSyntheticUser(params)
-}
-
-func (p *Provisioner) getUserPosition(userID int64) (lat, lng float64, ok bool, err error) {
-	p.dbMu.Lock()
-	defer p.dbMu.Unlock()
-	return p.Store.GetUserPosition(userID)
+	return p.Store.BulkCreateSyntheticUsers(params)
 }

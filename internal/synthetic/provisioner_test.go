@@ -190,16 +190,19 @@ func TestProvisionerContinuesAfterIndividualFailures(t *testing.T) {
 	db := openProvisionerTestDB(t)
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 
-	// 预先创建 account 2（带错误外观，方便矫正路径触发失败）
-	_, err := db.CreateUser(storage.User{
-		Username:           "synthetic_2",
-		UsernameNormalized: "synthetic_2",
+	// 预创建 account 1（含正确外观和已保存位置），确保批量创建失败时仍能复用
+	id, err := db.CreateUser(storage.User{
+		Username:           "synthetic_1",
+		UsernameNormalized: "synthetic_1",
 		PasswordHash:       "existing-hash",
 		CreatedAt:          now,
-		Appearance:         storage.Appearance{Color: "#ffffff", Shape: "circle"},
+		Appearance:         FixedAppearance(),
 	})
 	if err != nil {
 		t.Fatalf("create existing user failed: %v", err)
+	}
+	if err := db.SaveUserPosition(id, 31.2, 121.4); err != nil {
+		t.Fatalf("save position failed: %v", err)
 	}
 
 	provisioner := newTestProvisioner(db)
@@ -210,15 +213,20 @@ func TestProvisionerContinuesAfterIndividualFailures(t *testing.T) {
 		},
 	}
 
+	// 批量创建 account 2 触发故障 → 2 和 3 一起失败
+	// account 1 走矫正路径 → 复用成功
 	result, err := provisioner.Provision(context.Background(), 3, 2, testPassword)
 	if err != nil {
 		t.Fatalf("Provision failed: %v", err)
 	}
-	if result.Failed != 1 || result.Created != 2 {
+	if result.Failed != 2 || result.Reused != 1 {
 		t.Fatalf("unexpected totals: %+v", result)
 	}
-	if result.Accounts[1].Err == nil || result.Accounts[0].Err != nil || result.Accounts[2].Err != nil {
-		t.Fatalf("expected only account 2 to fail: %+v", result.Accounts)
+	if result.Accounts[0].Err != nil || result.Accounts[0].Reused != true {
+		t.Fatalf("expected account 1 reused, got %+v", result.Accounts[0])
+	}
+	if result.Accounts[1].Err == nil || result.Accounts[2].Err == nil {
+		t.Fatalf("expected accounts 2 and 3 to fail, got %+v", result.Accounts)
 	}
 }
 
@@ -289,6 +297,14 @@ func (s *faultInjectStore) BulkCreateSyntheticUsers(params []storage.BulkCreateS
 		}
 	}
 	return s.db.BulkCreateSyntheticUsers(params)
+}
+
+func (s *faultInjectStore) BulkUpdateAppearances(userIDs []int64, appearance storage.Appearance) error {
+	return s.db.BulkUpdateAppearances(userIDs, appearance)
+}
+
+func (s *faultInjectStore) BulkInitializePositions(entries []storage.BulkPositionEntry) error {
+	return s.db.BulkInitializePositions(entries)
 }
 
 func (s *faultInjectStore) GetUserPosition(userID int64) (float64, float64, bool, error) {

@@ -160,6 +160,64 @@ func (db *DB) BulkCreateSyntheticUsers(params []BulkCreateSyntheticUserParams) (
 	return len(params), nil
 }
 
+type BulkPositionEntry struct {
+	UserID int64
+	Lat    float64
+	Lng    float64
+}
+
+func (db *DB) BulkUpdateAppearances(userIDs []int64, appearance Appearance) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, len(userIDs))
+	args := make([]any, 0, len(userIDs)+2)
+	args = append(args, appearance.Color, appearance.Shape)
+	for i, id := range userIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(
+		`UPDATE users SET appearance_color = ?, appearance_shape = ? WHERE id IN (%s)`,
+		strings.Join(placeholders, ", "),
+	)
+	_, err := db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("bulk update appearances: %w", err)
+	}
+	return nil
+}
+
+func (db *DB) BulkInitializePositions(entries []BulkPositionEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, entry := range entries {
+		_, err := tx.Exec(
+			`UPDATE users SET last_lat = ?, last_lng = ?
+			 WHERE id = ? AND last_lat IS NULL AND last_lng IS NULL`,
+			entry.Lat, entry.Lng, entry.UserID,
+		)
+		if err != nil {
+			return fmt.Errorf("init position user %d: %w", entry.UserID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
 func scanSyntheticUserRecord(rows *sql.Rows) (SyntheticUserRecord, error) {
 	var record SyntheticUserRecord
 	var lastLat, lastLng sql.NullFloat64
