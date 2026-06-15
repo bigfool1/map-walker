@@ -1,0 +1,37 @@
+{
+  "regions": [
+    {
+      "id": "region-1",
+      "center": {
+        "lat": 31.2304,
+        "lng": 121.4737
+      },
+      "radiusMeters": 200,
+      "targetCount": 20,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-2",
+      "center": {
+        "lat": 31.2345,
+        "lng": 121.4770
+      },
+      "radiusMeters": 200,
+      "targetCount": 20,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-3",
+      "center": {
+        "lat": 31.2270,
+        "lng": 121.4710
+      },
+      "radiusMeters": 200,
+      "targetCount": 20,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    }
+  ]
+}
