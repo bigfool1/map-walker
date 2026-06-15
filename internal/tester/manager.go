@@ -38,7 +38,6 @@ type Manager struct {
 
 	activeCount atomic.Int32
 	stop        chan struct{}
-	done        chan struct{}
 }
 
 func NewManager(cfg Config, db *storage.DB) *Manager {
@@ -46,7 +45,6 @@ func NewManager(cfg Config, db *storage.DB) *Manager {
 		cfg:  cfg,
 		db:   db,
 		stop: make(chan struct{}),
-		done: make(chan struct{}),
 	}
 }
 
@@ -256,7 +254,6 @@ func (m *Manager) Run() {
 
 	close(m.stop)
 	m.shutdown()
-	close(m.done)
 }
 
 func (m *Manager) shutdown() {
