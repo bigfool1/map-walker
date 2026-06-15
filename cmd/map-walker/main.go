@@ -38,6 +38,7 @@ func main() {
 	defaultDSN := envDefault("DB_DSN", storage.DefaultDBPath)
 	dbDriver := flag.String("db-driver", defaultDriver, "数据库驱动 (sqlite / mysql)")
 	dbDSN := flag.String("db-dsn", defaultDSN, "数据库 DSN (SQLite 文件路径 或 MySQL user:pass@tcp(host:port)/dbname)")
+	collectibleRegionsPath := flag.String("collectible-regions", "config/collectible-regions.json", "收集品区域配置文件路径")
 
 	synFlags := syntheticFlags{}
 	flag.IntVar(&synFlags.count, "synthetic-clients", 0, "合成客户端数量 (0 = 禁用)")
@@ -53,6 +54,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
+
+	// 加载区域配置
+	regions, err := game.LoadCollectibleRegions(*collectibleRegionsPath)
+	if err != nil {
+		log.Fatalf("load collectible regions: %v", err)
+	}
+
+	// 初始化收集品字段
+	collectibleField := game.NewCollectibleField(
+		game.AOIConfigFromWorld(game.DefaultConfig()),
+		regions,
+		nil, nil,
+	)
+	collectibleField.Populate()
+
+	scorePersister := storage.NewScorePersister(db)
 
 	worker := storage.NewPersistenceWorker(db)
 	loadSavedPlayer := storage.SavedPlayerLoader(db)
@@ -70,8 +87,10 @@ func main() {
 				Color: state.Appearance.Color,
 				Shape: state.Appearance.Shape,
 			},
+			Score:       state.Score,
+			IsSynthetic: state.IsSynthetic,
 		}, true
-	}, worker)
+	}, worker, collectibleField, scorePersister)
 	go hub.Run()
 
 	var manager *synthetic.Manager

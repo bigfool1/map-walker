@@ -25,11 +25,14 @@ func TestClientUsesSharedSendBufferCapacity(t *testing.T) {
 	}
 }
 
-func TestClientBecomesReadyAfterTwoMessages(t *testing.T) {
+func TestClientBecomesReadyAfterFourInitMessages(t *testing.T) {
 	client := NewClient(1, "synthetic_1")
 	defer client.CloseSend()
 
-	if !client.Send([]byte("self_state")) || !client.Send([]byte("visible_entities_snapshot")) {
+	if !client.Send([]byte("self_state")) ||
+		!client.Send([]byte("visible_entities_snapshot")) ||
+		!client.Send([]byte("collectible_regions")) ||
+		!client.Send([]byte("visible_collectibles_snapshot")) {
 		t.Fatal("expected initialization sends to succeed")
 	}
 
@@ -38,7 +41,7 @@ func TestClientBecomesReadyAfterTwoMessages(t *testing.T) {
 	if err := client.WaitReady(ctx); err != nil {
 		t.Fatalf("WaitReady failed: %v", err)
 	}
-	if client.MessagesDrained() != 2 || client.BytesDrained() == 0 {
+	if client.MessagesDrained() != 4 || client.BytesDrained() == 0 {
 		t.Fatalf("unexpected drain counters: messages=%d bytes=%d", client.MessagesDrained(), client.BytesDrained())
 	}
 }

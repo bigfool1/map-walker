@@ -44,6 +44,10 @@ type Hub struct {
 	aoi                *game.AOIIndex
 	loadSavedPlayer    SavedPlayerLoader
 	persister          PositionPersister
+	collectibleField   *game.CollectibleField
+	scorePersister     ScorePersister
+	playerScores       map[int64]int64
+	syntheticPlayerIDs map[int64]struct{}
 	register           chan ClientSender
 	unregister         chan ClientSender
 	inputs             chan inputEvent
@@ -85,10 +89,10 @@ type intervalStats struct {
 }
 
 func NewHub() *Hub {
-	return NewHubWithSavedPositions(nil, nil)
+	return NewHubWithSavedPositions(nil, nil, nil, nil)
 }
 
-func NewHubWithSavedPositions(loader SavedPlayerLoader, persister PositionPersister) *Hub {
+func NewHubWithSavedPositions(loader SavedPlayerLoader, persister PositionPersister, collectibleField *game.CollectibleField, scorePersister ScorePersister) *Hub {
 	simulationTicker := time.NewTicker(simulationInterval)
 	broadcastTicker := time.NewTicker(broadcastInterval)
 	persistenceTicker := time.NewTicker(persistenceInterval)
@@ -98,6 +102,8 @@ func NewHubWithSavedPositions(loader SavedPlayerLoader, persister PositionPersis
 		game.NewWorld(game.DefaultConfig()),
 		loader,
 		persister,
+		collectibleField,
+		scorePersister,
 		simulationTicker.C,
 		broadcastTicker.C,
 		persistenceTicker.C,
@@ -115,6 +121,8 @@ func newHub(
 	world *game.World,
 	loadSavedPlayer SavedPlayerLoader,
 	persister PositionPersister,
+	collectibleField *game.CollectibleField,
+	scorePersister ScorePersister,
 	simulationTick <-chan time.Time,
 	broadcastTick <-chan time.Time,
 	persistenceTick <-chan time.Time,
@@ -126,6 +134,10 @@ func newHub(
 		aoi:                game.NewAOIIndex(game.AOIConfigFromWorld(world.Config())),
 		loadSavedPlayer:    loadSavedPlayer,
 		persister:          persister,
+		collectibleField:   collectibleField,
+		scorePersister:     scorePersister,
+		playerScores:       map[int64]int64{},
+		syntheticPlayerIDs: map[int64]struct{}{},
 		register:           make(chan ClientSender),
 		unregister:         make(chan ClientSender),
 		inputs:             make(chan inputEvent),
@@ -330,6 +342,13 @@ func (h *Hub) addPlayer(userID int64, username string) {
 				playerUsername = username
 			}
 			h.world.AddPlayerWithState(userID, playerUsername, lat, lng, state.Appearance)
+			// 维护分数和合成身份
+			if h.collectibleField != nil {
+				h.playerScores[userID] = state.Score
+			}
+			if state.IsSynthetic {
+				h.syntheticPlayerIDs[userID] = struct{}{}
+			}
 			return
 		}
 	}
@@ -360,6 +379,13 @@ func (h *Hub) removeClient(client ClientSender) {
 
 	delete(h.clients, client.ID())
 	h.submitFinalPosition(client.ID())
+
+	// 提交最新分数（同步）
+	if h.scorePersister != nil {
+		if score, ok := h.playerScores[client.ID()]; ok {
+			h.scorePersister.SubmitSync(client.ID(), score)
+		}
+	}
 
 	changes := h.aoi.Remove(client.ID())
 	for _, neighborID := range changes.Left {
@@ -429,7 +455,8 @@ func (h *Hub) sendInitialization(client ClientSender) {
 		return
 	}
 
-	selfData, err := EncodeSelfState(tick, self, 0)
+	score := h.playerScore(client.ID())
+	selfData, err := EncodeSelfState(tick, self, score)
 	if err != nil {
 		log.Printf("encode self state failed: %v", err)
 		h.removeClient(client)
@@ -449,7 +476,46 @@ func (h *Hub) sendInitialization(client ClientSender) {
 	}
 	if ok := client.Send(visibleData); !ok {
 		h.removeClient(client)
+		return
 	}
+
+	// 发送收集品初始化消息（始终发送，无收集品时发送空消息以保证协议一致性）
+	var regions []game.CollectibleRegion
+	var visibleCollectibles []game.Collectible
+	if h.collectibleField != nil {
+		regions = h.collectibleField.Regions()
+		position, _ := h.world.PlayerPosition(client.ID())
+		visibleCollectibles = h.collectibleField.CollectiblesWithinRadius(position.Lat, position.Lng, 500)
+	}
+
+	regionsData, err := EncodeCollectibleRegions(tick, regions)
+	if err != nil {
+		log.Printf("encode collectible regions failed: %v", err)
+		h.removeClient(client)
+		return
+	}
+	if ok := client.Send(regionsData); !ok {
+		h.removeClient(client)
+		return
+	}
+
+	collectibleData, err := EncodeVisibleCollectiblesSnapshot(tick, visibleCollectibles)
+	if err != nil {
+		log.Printf("encode visible collectibles snapshot failed: %v", err)
+		h.removeClient(client)
+		return
+	}
+	if ok := client.Send(collectibleData); !ok {
+		h.removeClient(client)
+	}
+}
+
+// playerScore 返回玩家当前内存分数
+func (h *Hub) playerScore(userID int64) int64 {
+	if h.playerScores == nil {
+		return 0
+	}
+	return h.playerScores[userID]
 }
 
 func (h *Hub) broadcastReplication() {

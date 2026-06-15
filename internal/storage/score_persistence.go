@@ -3,6 +3,8 @@ package storage
 import (
 	"sync"
 	"time"
+
+	"map-walker/internal/realtime"
 )
 
 const (
@@ -22,7 +24,7 @@ type ScorePersister struct {
 	db       *DB
 	mu       sync.Mutex
 	pending  map[int64]int64 // userID -> highestScore
-	submitCh chan ScoreUpdate
+	submitCh chan realtime.ScoreUpdate
 	syncCh   chan syncScoreRequest
 	drainCh  chan chan struct{}
 	stopCh   chan struct{}
@@ -34,7 +36,7 @@ func NewScorePersister(db *DB) *ScorePersister {
 	p := &ScorePersister{
 		db:       db,
 		pending:  make(map[int64]int64),
-		submitCh: make(chan ScoreUpdate, 64),
+		submitCh: make(chan realtime.ScoreUpdate, 64),
 		syncCh:   make(chan syncScoreRequest),
 		drainCh:  make(chan chan struct{}),
 		stopCh:   make(chan struct{}),
@@ -45,7 +47,7 @@ func NewScorePersister(db *DB) *ScorePersister {
 }
 
 // Submit 异步提交分数快照（不阻塞 Hub）
-func (p *ScorePersister) Submit(update ScoreUpdate) {
+func (p *ScorePersister) Submit(update realtime.ScoreUpdate) {
 	select {
 	case p.submitCh <- update:
 	default:
@@ -115,7 +117,7 @@ func (p *ScorePersister) run() {
 	}
 }
 
-func (p *ScorePersister) coalesce(u ScoreUpdate) {
+func (p *ScorePersister) coalesce(u realtime.ScoreUpdate) {
 	p.mu.Lock()
 	if current, ok := p.pending[u.UserID]; !ok || u.Score > current {
 		p.pending[u.UserID] = u.Score

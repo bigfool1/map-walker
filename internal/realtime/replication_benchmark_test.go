@@ -123,7 +123,7 @@ func setupDirectBenchHub(b *testing.B, numClients int) (*Hub, []*testClient) {
 	loader := benchLoader(numClients)
 
 	hub := newHub(
-		world, loader, nil,
+		world, loader, nil, nil, nil,
 		make(chan time.Time),  // simCh — 不使用（直接调用 Step）
 		make(chan time.Time),  // broadcastCh — 不使用
 		make(chan time.Time),  // persistenceCh — 不使用

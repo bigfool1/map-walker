@@ -32,7 +32,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	client := realtime.NewClient(user.ID, user.Username, conn, s.hub)
+	client := realtime.NewClientWithSynthetic(user.ID, user.Username, conn, s.hub, user.IsSynthetic)
 	client.Run(ctx)
 
 	_ = conn.Close(websocket.StatusNormalClosure, "connection closed")

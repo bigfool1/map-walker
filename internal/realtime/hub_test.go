@@ -1562,7 +1562,7 @@ func newTestHubWithConfigAndStats(config game.Config, loader SavedPlayerLoader, 
 	broadcasts := make(chan time.Time, 8)
 	persistence := make(chan time.Time, 8)
 	world := game.NewWorld(config)
-	hub := newHub(world, loader, persister, simulations, broadcasts, persistence, statsTick, func() {})
+	hub := newHub(world, loader, persister, nil, nil, simulations, broadcasts, persistence, statsTick, func() {})
 	return hub, simulations, broadcasts, persistence
 }
 
@@ -1712,6 +1712,10 @@ func mustReceiveInitialization(t *testing.T, client *testClient) (SelfStateMessa
 	if visible.Type != MessageTypeVisibleEntitiesSnapshot {
 		t.Fatalf("expected visible entities snapshot, got %q", visible.Type)
 	}
+
+	// 消费收集品初始化消息（collectible_regions + visible_collectibles_snapshot）
+	mustReceiveData(t, client) // collectible_regions
+	mustReceiveData(t, client) // visible_collectibles_snapshot
 	return self, visible
 }
 

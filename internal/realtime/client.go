@@ -26,13 +26,14 @@ func init() {
 }
 
 type Client struct {
-	id        int64
-	username  string
-	conn      *websocket.Conn
-	hub       *Hub
-	send      chan []byte
-	cancel    context.CancelFunc
-	closeOnce sync.Once
+	id          int64
+	username    string
+	conn        *websocket.Conn
+	hub         *Hub
+	isSynthetic bool
+	send        chan []byte
+	cancel      context.CancelFunc
+	closeOnce   sync.Once
 }
 
 func NewClient(id int64, username string, conn *websocket.Conn, hub *Hub) *Client {
@@ -43,6 +44,18 @@ func NewClient(id int64, username string, conn *websocket.Conn, hub *Hub) *Clien
 		hub:      hub,
 		send:     make(chan []byte, DefaultSendBufferSize),
 	}
+}
+
+// NewClientWithSynthetic 创建带合成身份的客户端
+func NewClientWithSynthetic(id int64, username string, conn *websocket.Conn, hub *Hub, isSynthetic bool) *Client {
+	c := NewClient(id, username, conn, hub)
+	c.isSynthetic = isSynthetic
+	return c
+}
+
+// IsSynthetic 返回客户端的服务端信任合成身份
+func (c *Client) IsSynthetic() bool {
+	return c.isSynthetic
 }
 
 func (c *Client) ID() int64 {

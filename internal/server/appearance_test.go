@@ -127,6 +127,17 @@ func TestPutAppearanceOnlineUserBroadcastsReplicationAppearance(t *testing.T) {
 	if _, _, err := conn.Read(readCtx); err != nil {
 		t.Fatalf("read visible entities snapshot failed: %v", err)
 	}
+	// 消费 collectible_regions 和 visible_collectibles_snapshot
+	readCtx, cancel2 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel2()
+	if _, _, err := conn.Read(readCtx); err != nil {
+		t.Fatalf("read collectible regions failed: %v", err)
+	}
+	readCtx, cancel3 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel3()
+	if _, _, err := conn.Read(readCtx); err != nil {
+		t.Fatalf("read visible collectibles snapshot failed: %v", err)
+	}
 
 	resp := putJSON(t, server.URL+"/api/appearance", `{"color":"#ff6600","shape":"diamond"}`, cookie)
 	defer resp.Body.Close()

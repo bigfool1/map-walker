@@ -12,7 +12,7 @@ import (
 
 var ErrClosedBeforeReady = errors.New("synthetic client closed before readiness")
 
-const initializationMessagesRequired = 2
+const initializationMessagesRequired = 4
 
 type Client struct {
 	id       int64

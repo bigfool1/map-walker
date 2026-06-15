@@ -13,6 +13,6 @@ func NewManualTickHub(config game.Config, loader SavedPlayerLoader, persister Po
 	persistence := make(chan time.Time, 8)
 	stats := make(chan time.Time, 8)
 	world := game.NewWorld(config)
-	hub := newHub(world, loader, persister, simulations, broadcasts, persistence, stats, func() {})
+	hub := newHub(world, loader, persister, nil, nil, simulations, broadcasts, persistence, stats, func() {})
 	return hub, simulations, broadcasts, persistence, stats
 }

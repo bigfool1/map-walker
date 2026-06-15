@@ -4,6 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"map-walker/internal/realtime"
 )
 
 func setupPersister(t *testing.T) (*DB, *ScorePersister, func()) {
@@ -46,7 +48,7 @@ func TestScorePersisterSubmitAndDrain(t *testing.T) {
 	defer cleanup()
 
 	userID := createScoreTestUser(t, db, "player1")
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 42})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 42})
 	persister.Drain()
 
 	assertScore(t, db, userID, 42)
@@ -58,9 +60,9 @@ func TestScorePersisterCoalescing(t *testing.T) {
 
 	userID := createScoreTestUser(t, db, "player2")
 	// 快速连续提交递增分数，应只持久化最高值
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 41})
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 42})
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 43})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 41})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 42})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 43})
 	persister.Drain()
 
 	assertScore(t, db, userID, 43)
@@ -82,7 +84,7 @@ func TestScorePersisterSyncTakesPendingMax(t *testing.T) {
 
 	userID := createScoreTestUser(t, db, "player4")
 	// 异步提交更高分数，然后同步提交较低分数，应取 pending 中的最高值
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 77})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 77})
 	time.Sleep(50 * time.Millisecond) // 让 worker 合并
 	persister.SubmitSync(userID, 10)  // Sync 应取 pending 中的 77
 
@@ -96,8 +98,8 @@ func TestScorePersisterPerUserIsolation(t *testing.T) {
 	alice := createScoreTestUser(t, db, "alice")
 	bob := createScoreTestUser(t, db, "bob")
 
-	persister.Submit(ScoreUpdate{UserID: alice, Score: 10})
-	persister.Submit(ScoreUpdate{UserID: bob, Score: 20})
+	persister.Submit(realtime.ScoreUpdate{UserID: alice, Score: 10})
+	persister.Submit(realtime.ScoreUpdate{UserID: bob, Score: 20})
 	persister.Drain()
 
 	assertScore(t, db, alice, 10)
@@ -109,7 +111,7 @@ func TestScorePersisterMultipleDrainIdempotent(t *testing.T) {
 	defer cleanup()
 
 	userID := createScoreTestUser(t, db, "player5")
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 55})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 55})
 	persister.Drain()
 	persister.Drain() // 第二次 drain 应无影响
 
@@ -124,12 +126,12 @@ func TestScorePersisterStaleSnapshot(t *testing.T) {
 	userID := createScoreTestUser(t, db, "player6")
 
 	// 提交 42 并等待 worker 处理
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 42})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 42})
 	persister.Drain()
 	assertScore(t, db, userID, 42)
 
 	// 提交 44
-	persister.Submit(ScoreUpdate{UserID: userID, Score: 44})
+	persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: 44})
 	persister.Drain()
 	assertScore(t, db, userID, 44)
 }
@@ -145,7 +147,7 @@ func TestScorePersisterConcurrentSubmissions(t *testing.T) {
 		wg.Add(1)
 		go func(s int64) {
 			defer wg.Done()
-			persister.Submit(ScoreUpdate{UserID: userID, Score: s})
+			persister.Submit(realtime.ScoreUpdate{UserID: userID, Score: s})
 		}(score)
 	}
 	wg.Wait()

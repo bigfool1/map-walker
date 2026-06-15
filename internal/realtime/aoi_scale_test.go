@@ -61,7 +61,7 @@ func runThousandClientScenario(t *testing.T) thousandClientMetrics {
 	broadcasts := make(chan time.Time)
 	persistence := make(chan time.Time, 8)
 	world := game.NewWorld(fastTestWorldConfig())
-	hub := newHub(world, thousandPlayerLoader(), nil, simulations, broadcasts, persistence, statsTick, func() {})
+	hub := newHub(world, thousandPlayerLoader(), nil, nil, nil, simulations, broadcasts, persistence, statsTick, func() {})
 	go hub.Run()
 	defer hub.Stop()
 
