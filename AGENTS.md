@@ -38,6 +38,7 @@ go run ./cmd/map-walker -db-driver mysql -db-dsn 'user:pass@tcp(localhost:3306)/
 
 ## 编码约定
 
+- writing-plans时只写任务边界、行为目标、涉及模块和验证方式
 - 不做提前抽象，一个函数一个职责
 - Hub actor 模式下，状态修改集中在 `Run()` loop 里，不要在其他地方加锁
 - 周期性持久化用 async `Submit`（不阻塞 Hub）；final save 用 `SubmitSync`（同步保证已提交）
