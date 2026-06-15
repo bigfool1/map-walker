@@ -42,6 +42,7 @@ func (c *Client) Send(data []byte) bool {
 func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		close(c.send)
+		c.conn.Close(websocket.StatusNormalClosure, "")
 	})
 }
 
@@ -62,10 +63,7 @@ func (c *Client) WriteFails() uint64 {
 }
 
 func (c *Client) readLoop(ctx context.Context) {
-	defer func() {
-		c.conn.Close(websocket.StatusNormalClosure, "read loop done")
-		close(c.done)
-	}()
+	defer close(c.done)
 	for {
 		_, data, err := c.conn.Read(ctx)
 		if err != nil {
