@@ -460,10 +460,8 @@ body {
 }
 
 .collectible-region {
-  fill: rgba(255, 215, 0, 0.08);
-  stroke: rgba(218, 180, 0, 0.45);
-  stroke-width: 2;
-  stroke-dasharray: 6 4;
+  fill: transparent;
+  stroke: transparent;
   pointer-events: none;
 }
 

@@ -20,12 +20,12 @@ type CollectibleRegion struct {
 }
 
 type collectibleRegionJSON struct {
-	ID                string             `json:"id"`
+	ID                string               `json:"id"`
 	Center            collectiblePointJSON `json:"center"`
-	RadiusMeters      float64            `json:"radiusMeters"`
-	TargetCount       int                `json:"targetCount"`
-	RespawnMinSeconds int                `json:"respawnMinSeconds"`
-	RespawnMaxSeconds int                `json:"respawnMaxSeconds"`
+	RadiusMeters      float64              `json:"radiusMeters"`
+	TargetCount       int                  `json:"targetCount"`
+	RespawnMinSeconds int                  `json:"respawnMinSeconds"`
+	RespawnMaxSeconds int                  `json:"respawnMaxSeconds"`
 }
 
 type collectiblePointJSON struct {
@@ -58,8 +58,8 @@ func LoadCollectibleRegions(path string) ([]CollectibleRegion, error) {
 }
 
 func validateAndConvertRegions(jsons []collectibleRegionJSON) ([]CollectibleRegion, error) {
-	if len(jsons) != 3 {
-		return nil, fmt.Errorf("区域配置需要恰好 3 个区域，实际: %d", len(jsons))
+	if len(jsons) == 0 {
+		return nil, fmt.Errorf("区域配置至少需要 1 个区域")
 	}
 
 	ids := make(map[string]struct{}, len(jsons))

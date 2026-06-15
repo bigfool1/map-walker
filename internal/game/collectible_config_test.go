@@ -14,7 +14,7 @@ func validRegionsJSON() []byte {
       "id": "region-1",
       "center": {"lat": 31.2304, "lng": 121.4737},
       "radiusMeters": 200,
-      "targetCount": 20,
+      "targetCount": 5,
       "respawnMinSeconds": 5,
       "respawnMaxSeconds": 15
     },
@@ -22,7 +22,7 @@ func validRegionsJSON() []byte {
       "id": "region-2",
       "center": {"lat": 31.2350, "lng": 121.4780},
       "radiusMeters": 200,
-      "targetCount": 20,
+      "targetCount": 5,
       "respawnMinSeconds": 5,
       "respawnMaxSeconds": 15
     },
@@ -30,7 +30,7 @@ func validRegionsJSON() []byte {
       "id": "region-3",
       "center": {"lat": 31.2270, "lng": 121.4700},
       "radiusMeters": 200,
-      "targetCount": 20,
+      "targetCount": 5,
       "respawnMinSeconds": 5,
       "respawnMaxSeconds": 15
     }
@@ -60,8 +60,8 @@ func TestLoadValidConfig(t *testing.T) {
 		if r.ID == "" {
 			t.Fatalf("region[%d] ID 为空", i)
 		}
-		if r.TargetCount != 20 {
-			t.Fatalf("region[%d] TargetCount = %d, want 20", i, r.TargetCount)
+		if r.TargetCount != 5 {
+			t.Fatalf("region[%d] TargetCount = %d, want 5", i, r.TargetCount)
 		}
 		if r.RadiusMeters != 200 {
 			t.Fatalf("region[%d] RadiusMeters = %v, want 200", i, r.RadiusMeters)
@@ -90,30 +90,27 @@ func TestLoadInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestLoadNotExactlyThreeRegions(t *testing.T) {
-	tests := []struct {
-		name string
-		json string
-	}{
-		{"零区域", `{"regions": []}`},
-		{"一个区域", `{"regions": [
-			{"id": "r1", "center": {"lat": 31.23, "lng": 121.47}, "radiusMeters": 200, "targetCount": 20, "respawnMinSeconds": 5, "respawnMaxSeconds": 15}
-		]}`},
-		{"四个区域", `{"regions": [
-			{"id": "r1", "center": {"lat": 31.23, "lng": 121.47}, "radiusMeters": 200, "targetCount": 20, "respawnMinSeconds": 5, "respawnMaxSeconds": 15},
-			{"id": "r2", "center": {"lat": 31.24, "lng": 121.48}, "radiusMeters": 200, "targetCount": 20, "respawnMinSeconds": 5, "respawnMaxSeconds": 15},
-			{"id": "r3", "center": {"lat": 31.25, "lng": 121.49}, "radiusMeters": 200, "targetCount": 20, "respawnMinSeconds": 5, "respawnMaxSeconds": 15},
-			{"id": "r4", "center": {"lat": 31.26, "lng": 121.50}, "radiusMeters": 200, "targetCount": 20, "respawnMinSeconds": 5, "respawnMaxSeconds": 15}
-		]}`},
+func TestLoadEmptyRegions(t *testing.T) {
+	path := writeTempConfig(t, []byte(`{"regions": []}`))
+	_, err := LoadCollectibleRegions(path)
+	if err == nil {
+		t.Fatal("期望空区域配置错误")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			path := writeTempConfig(t, []byte(tt.json))
-			_, err := LoadCollectibleRegions(path)
-			if err == nil {
-				t.Fatal("期望验证错误")
-			}
-		})
+}
+
+func TestLoadDefaultConfig(t *testing.T) {
+	path := filepath.Join("..", "..", "config", "collectible-regions.json")
+	regions, err := LoadCollectibleRegions(path)
+	if err != nil {
+		t.Fatalf("加载默认配置失败: %v", err)
+	}
+	if len(regions) != 20 {
+		t.Fatalf("默认区域数 = %d, want 20", len(regions))
+	}
+	for i, region := range regions {
+		if region.TargetCount != 5 {
+			t.Fatalf("region[%d] TargetCount = %d, want 5", i, region.TargetCount)
+		}
 	}
 }
 

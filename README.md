@@ -70,8 +70,8 @@ and never sent to the server outside the `Authorization: Bearer` header.
 
 ## Collectible Gameplay
 
-Three translucent gold circular regions are displayed on the map. Each region
-contains 20 collectible gems rendered as glowing gold points. Walk within 10
+Twenty translucent gold circular regions are displayed on the map. Each region
+contains 5 collectible gems rendered as glowing gold points. Walk within 10
 meters of a gem — the nearest one highlights — and press `J` (desktop) or tap
 the circular pickup button (touch, lower-right corner) to collect it.
 

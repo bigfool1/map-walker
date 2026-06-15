@@ -1,35 +1,162 @@
 {
   "regions": [
     {
-      "id": "region-1",
-      "center": {
-        "lat": 31.2304,
-        "lng": 121.4737
-      },
+      "id": "region-01",
+      "center": {"lat": 31.2214, "lng": 121.46575},
       "radiusMeters": 200,
-      "targetCount": 20,
+      "targetCount": 5,
       "respawnMinSeconds": 5,
       "respawnMaxSeconds": 15
     },
     {
-      "id": "region-2",
-      "center": {
-        "lat": 31.2345,
-        "lng": 121.4770
-      },
+      "id": "region-02",
+      "center": {"lat": 31.2214, "lng": 121.47105},
       "radiusMeters": 200,
-      "targetCount": 20,
+      "targetCount": 5,
       "respawnMinSeconds": 5,
       "respawnMaxSeconds": 15
     },
     {
-      "id": "region-3",
-      "center": {
-        "lat": 31.2270,
-        "lng": 121.4710
-      },
+      "id": "region-03",
+      "center": {"lat": 31.2214, "lng": 121.47635},
       "radiusMeters": 200,
-      "targetCount": 20,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-04",
+      "center": {"lat": 31.2214, "lng": 121.48165},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-05",
+      "center": {"lat": 31.2259, "lng": 121.46575},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-06",
+      "center": {"lat": 31.2259, "lng": 121.47105},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-07",
+      "center": {"lat": 31.2259, "lng": 121.47635},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-08",
+      "center": {"lat": 31.2259, "lng": 121.48165},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-09",
+      "center": {"lat": 31.2304, "lng": 121.46575},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-10",
+      "center": {"lat": 31.2304, "lng": 121.47105},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-11",
+      "center": {"lat": 31.2304, "lng": 121.47635},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-12",
+      "center": {"lat": 31.2304, "lng": 121.48165},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-13",
+      "center": {"lat": 31.2349, "lng": 121.46575},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-14",
+      "center": {"lat": 31.2349, "lng": 121.47105},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-15",
+      "center": {"lat": 31.2349, "lng": 121.47635},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-16",
+      "center": {"lat": 31.2349, "lng": 121.48165},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-17",
+      "center": {"lat": 31.2394, "lng": 121.46575},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-18",
+      "center": {"lat": 31.2394, "lng": 121.47105},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-19",
+      "center": {"lat": 31.2394, "lng": 121.47635},
+      "radiusMeters": 200,
+      "targetCount": 5,
+      "respawnMinSeconds": 5,
+      "respawnMaxSeconds": 15
+    },
+    {
+      "id": "region-20",
+      "center": {"lat": 31.2394, "lng": 121.48165},
+      "radiusMeters": 200,
+      "targetCount": 5,
       "respawnMinSeconds": 5,
       "respawnMaxSeconds": 15
     }

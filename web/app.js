@@ -3,7 +3,7 @@ const MARKER_SIZE = 20;
 const MARKER_ANCHOR = MARKER_SIZE / 2;
 const DEFAULT_APPEARANCE = { color: "#3388ff", shape: "circle" };
 const APPEARANCE_SHAPES = ["circle", "square", "diamond", "triangle"];
-const PICKUP_RADIUS = 10;
+const PICKUP_RADIUS = 20;
 const PICKUP_COOLDOWN = 300;
 
 let currentUserId = null;
@@ -568,6 +568,7 @@ function updatePickupButton() {
 }
 
 function performPickup() {
+  closeLeaderboard();
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
@@ -779,6 +780,10 @@ function clearRetryTimer() {
 function setDirection(direction, pressed) {
   if (input[direction] === pressed) {
     return;
+  }
+  // 用户操作时自动关闭排行榜
+  if (pressed) {
+    closeLeaderboard();
   }
   input[direction] = pressed;
   sendInput();
@@ -1001,6 +1006,9 @@ function setJoystickDirections(up, down, left, right) {
     input.right === right
   ) {
     return;
+  }
+  if (up || down || left || right) {
+    closeLeaderboard();
   }
   input.up = up;
   input.down = down;

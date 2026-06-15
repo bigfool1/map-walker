@@ -685,7 +685,7 @@ func (h *Hub) processCollect(evt collectEvent) {
 		return
 	}
 	dx, dy := h.collectibleLocalDiff(playerPos.Lat, playerPos.Lng, collectible.Lat, collectible.Lng)
-	if dx*dx+dy*dy > 100 { // 10米²
+	if dx*dx+dy*dy > 400 { // 20米²
 		return
 	}
 

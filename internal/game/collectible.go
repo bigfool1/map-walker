@@ -14,7 +14,7 @@ type Collectible struct {
 	Lng      float64
 }
 
-const minCollectibleSeparationMeters = 5.0
+const minCollectibleSeparationMeters = 0.5
 
 type replacementDeadline struct {
 	regionID string

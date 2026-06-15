@@ -18,7 +18,7 @@ tasks done.
   monotonic process-local IDs, per-region target populations.
 - `CollectibleRegion`, `Collectible` exported types. Deterministic `timeNow`/`rng`
   seams for tests.
-- Three fixed 200m-radius circular regions in Shanghai, 20 collectibles each.
+- Twenty fixed 200m-radius circular regions in Shanghai, 5 collectibles each.
   `config/collectible-regions.json`, `-collectible-regions` flag. Validates count,
   coordinates, radius, respawn bounds, overlap at startup.
 - Pickup removes immediately; replacement scheduled after random 5-15s delay.
@@ -72,7 +72,7 @@ tasks done.
 
 ### Frontend (`web/`)
 
-- Three translucent gold dashed region circles (Leaflet, non-interactive).
+- Configured translucent gold dashed region circles (Leaflet, non-interactive).
 - Gold glowing gem markers (`divIcon`, radial gradient + box-shadow).
 - Nearest-target selection (haversine ≤10m), highlighted with larger glow.
 - `J` key and circular touch button share 300ms client cooldown.
