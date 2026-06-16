@@ -6,7 +6,7 @@ import (
 	"map-walker/internal/game"
 )
 
-const activityHalfExtentMeters = 5000
+const activityHalfExtentMeters = 1500
 
 type PlacementConfig struct {
 	SpawnLat float64

@@ -24,7 +24,7 @@ func TestPlacementLatLngStaysWithinActivityRegion(t *testing.T) {
 
 func TestPlacementLatLngIsSpatiallyDistributed(t *testing.T) {
 	distance := LocalPlacementDistance(1, 9999)
-	if distance < 1000 {
+	if distance < 100 {
 		t.Fatalf("expected low and high accounts to be separated, got %vm", distance)
 	}
 }

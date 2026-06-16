@@ -9,7 +9,7 @@ import (
 
 const (
 	BehaviorTickInterval = 100 * time.Millisecond
-	softBoundaryMeters   = 4500
+	softBoundaryMeters   = 1350
 )
 
 type BehaviorConfig struct {
