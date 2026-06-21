@@ -9,9 +9,9 @@ Design docs and plans are in `docs/superpowers/specs/` and
 `docs/superpowers/plans/`. Earlier phase history is in git log.
 
 **Most recently completed plan:**
-`docs/superpowers/plans/2026-06-21-replication-builder.md` —
-per-recipient replication fanout extracted from Hub actor into synchronous
-`ReplicationBuilder`.
+`docs/superpowers/plans/2026-06-21-aoi-movement-delta.md` —
+AOI `MoveDetailed` API 在一次调用中返回 entered、left、stable neighbors，
+消除 `snapshotMoverVisibility` 和重复的 `VisibleNeighbors` 查询。
 
 ### Collectible field (`internal/game/`)
 
@@ -79,9 +79,10 @@ per-recipient replication fanout extracted from Hub actor into synchronous
   durations. Separate from `DispatcherStats`.
 - Benchmark: ~1.5ms at 2000 recipients (fanout + immutable copy). Interface
   overhead negligible vs concrete reader.
-- Next bottleneck: AOI mutation still synchronous in actor
-  (`snapshotMoverVisibility`, `applyMovementAOIChanges`,
-  `recalcCollectibleVisibility`).
+- Next bottleneck: collectible visibility recalculation and/or AOI candidate
+  scan. AOI detailed move duration and collectible recalc duration now have
+  independent timing in `HubSnapshot` (`AOIDetailedMoveDuration`,
+  `CollectibleRecalcDuration`). Decision rule in `docs/benchmarks/aoi-movement-delta.md`.
 
 ### Replication dispatcher (`internal/realtime/replication_dispatcher.go`)
 
