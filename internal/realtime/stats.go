@@ -40,5 +40,7 @@ type HubSnapshot struct {
 	ReplicationBytes      uint64
 	Builder               BuilderStats
 	Dispatcher            DispatcherStats
+	AOIDetailedMoveDuration   time.Duration
+	CollectibleRecalcDuration time.Duration
 	SampledAt             time.Time
 }

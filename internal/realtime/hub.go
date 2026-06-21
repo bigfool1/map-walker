@@ -146,6 +146,8 @@ type intervalStats struct {
 	builderAccumDuration    int64 // nanoseconds
 	builderCopyDuration     int64 // nanoseconds
 	builderTotalDuration    int64 // nanoseconds
+	aoiDetailedMoveDuration   int64 // nanoseconds
+	collectibleRecalcDuration int64 // nanoseconds
 }
 
 func NewHub() *Hub {
@@ -773,6 +775,8 @@ func (h *Hub) advanceCollectibleReplacements() {
 
 // recalcCollectibleVisibility 为移动的玩家重新计算收集品可见性
 func (h *Hub) recalcCollectibleVisibility(movedIDs []int64) {
+	start := time.Now()
+	defer func() { h.stats.collectibleRecalcDuration += time.Since(start).Nanoseconds() }()
 	for _, playerID := range movedIDs {
 		if _, connected := h.clients[playerID]; !connected {
 			continue
@@ -861,7 +865,9 @@ func (h *Hub) broadcastReplication() {
 	movedIDs := h.world.TakeMovedPlayerIDs()
 	h.world.TakeRemovedPlayerIDs()
 
+	moveStart := time.Now()
 	movementDeltas := h.applyMovementAOIDeltas(movedIDs)
+	h.stats.aoiDetailedMoveDuration += time.Since(moveStart).Nanoseconds()
 	h.stats.movedPlayers += uint64(len(movedIDs))
 
 	pendingEntered := h.takePendingEntered()
@@ -1010,7 +1016,9 @@ func (h *Hub) logStats() {
 			CopyDuration:         time.Duration(h.stats.builderCopyDuration),
 			TotalDuration:        time.Duration(h.stats.builderTotalDuration),
 		},
-		SampledAt: time.Now(),
+		AOIDetailedMoveDuration:   time.Duration(h.stats.aoiDetailedMoveDuration),
+		CollectibleRecalcDuration: time.Duration(h.stats.collectibleRecalcDuration),
+		SampledAt:                 time.Now(),
 	}
 	// 从 dispatcher 读取编码/字节统计（替换旧的 actor 内联统计）
 	ds := h.dispatcher.Stats()
@@ -1021,7 +1029,7 @@ func (h *Hub) logStats() {
 	h.snapshot.Store(snap)
 
 	log.Printf(
-		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d builder_calls=%d builder_recipients=%d builder_jobs=%d builder_accum_us=%d builder_copy_us=%d builder_total_us=%d",
+		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d aoi_detailed_move_us=%d collectible_recalc_us=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d builder_calls=%d builder_recipients=%d builder_jobs=%d builder_accum_us=%d builder_copy_us=%d builder_total_us=%d",
 		snap.ConnectedClients,
 		snap.AcceptedInputs,
 		snap.SimulationTicks,
@@ -1033,6 +1041,8 @@ func (h *Hub) logStats() {
 		snap.ReplicationMessages,
 		snap.ReplicationRecipients,
 		snap.ReplicationBytes,
+		snap.AOIDetailedMoveDuration.Microseconds(),
+		snap.CollectibleRecalcDuration.Microseconds(),
 		ds.Submitted,
 		ds.Encoded,
 		ds.SkippedEmpty,
