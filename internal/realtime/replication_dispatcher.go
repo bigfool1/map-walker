@@ -159,3 +159,22 @@ func (d *ReplicationDispatcher) Stop() {
 	}
 	d.wg.Wait()
 }
+
+// Stats 返回当前统计快照。可从任意 goroutine 安全调用。
+func (d *ReplicationDispatcher) Stats() DispatcherStats {
+	var queueDepth int
+	for i := range d.workerCount {
+		queueDepth += len(d.workers[i])
+	}
+	return DispatcherStats{
+		Submitted:    uint64(d.Submitted.Load()),
+		Dropped:      uint64(d.Dropped.Load()),
+		Encoded:      uint64(d.Encoded.Load()),
+		SkippedEmpty: uint64(d.SkippedEmpty.Load()),
+		EncodeErrors: uint64(d.EncodeErrors.Load()),
+		SendFailures: uint64(d.SendFailures.Load()),
+		EncodedBytes: uint64(d.EncodedBytes.Load()),
+		QueueDepth:   queueDepth,
+		WorkerCount:  d.workerCount,
+	}
+}

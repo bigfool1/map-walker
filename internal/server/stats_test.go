@@ -23,7 +23,13 @@ func stubHubSnapshot() *realtime.HubSnapshot {
 		ConnectedClients:    3,
 		SimulationTicks:     100,
 		ReplicationMessages: 50,
-		SampledAt:           time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Dispatcher: realtime.DispatcherStats{
+			Submitted:  100,
+			Encoded:    80,
+			Dropped:    2,
+			WorkerCount: 4,
+		},
+		SampledAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 }
 
@@ -98,6 +104,12 @@ func TestStatsResponseContainsAggregateFields(t *testing.T) {
 	}
 	if body.Hub.ReplicationMessages != 50 {
 		t.Errorf("hub.ReplicationMessages=%d want 50", body.Hub.ReplicationMessages)
+	}
+	if body.Hub.Dispatcher.Submitted != 100 {
+		t.Errorf("hub.Dispatcher.Submitted=%d want 100", body.Hub.Dispatcher.Submitted)
+	}
+	if body.Hub.Dispatcher.WorkerCount != 4 {
+		t.Errorf("hub.Dispatcher.WorkerCount=%d want 4", body.Hub.Dispatcher.WorkerCount)
 	}
 
 	if body.Synthetic == nil {

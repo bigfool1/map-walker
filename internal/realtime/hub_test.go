@@ -1919,6 +1919,50 @@ func TestHubSnapshotAfterStop(t *testing.T) {
 	}
 }
 
+func TestHubSnapshotDispatcherStats(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+
+	// 给 Hub 装一个 dispatcher，worker 处理 job 后触发统计计数
+	d := NewReplicationDispatcher(2, 8, nil)
+	hub.dispatcher = d
+	defer d.Stop()
+
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	changes := ReplicationChanges{
+		Positions: []game.PlayerPosition{{ID: 2001, Lat: 31.1, Lng: 121.1}},
+	}
+	cp := copyReplicationChanges(changes)
+	d.Submit(replicationJob{recipientID: 1, tick: 1, client: alice, changes: cp})
+	// mustReceiveReplicationUpdate 阻塞等待 worker 处理完 job
+	mustReceiveReplicationUpdate(t, alice)
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+	if snap == nil {
+		t.Fatal("snapshot is nil after stats tick")
+	}
+	if snap.Dispatcher.WorkerCount != 2 {
+		t.Errorf("Dispatcher.WorkerCount=%d want 2", snap.Dispatcher.WorkerCount)
+	}
+	if snap.Dispatcher.Submitted == 0 {
+		t.Error("Dispatcher.Submitted=0 after Submit")
+	}
+	if snap.Dispatcher.Encoded == 0 {
+		t.Error("Dispatcher.Encoded=0 after non-empty job")
+	}
+}
+
 func testRegionsForPickup() []game.CollectibleRegion {
 	return []game.CollectibleRegion{
 		{ID: "region-1", CenterLat: 31.2304, CenterLng: 121.4737, RadiusMeters: 5, TargetCount: 1, RespawnMin: 5 * time.Second, RespawnMax: 10 * time.Second},

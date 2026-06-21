@@ -95,6 +95,7 @@ type Hub struct {
 	pendingLeft        map[int64][]int64
 	pendingAppearances map[int64]game.Appearance
 	disconnectUser     chan disconnectRequest
+	dispatcher         *ReplicationDispatcher
 	simulationTick     <-chan time.Time
 	broadcastTick      <-chan time.Time
 	persistenceTick    <-chan time.Time
@@ -1117,6 +1118,9 @@ func (h *Hub) logStats() {
 		ReplicationRecipients: h.stats.replicationRecipients,
 		ReplicationBytes:      h.stats.replicationBytes,
 		SampledAt:             time.Now(),
+	}
+	if h.dispatcher != nil {
+		snap.Dispatcher = h.dispatcher.Stats()
 	}
 	h.snapshot.Store(snap)
 
