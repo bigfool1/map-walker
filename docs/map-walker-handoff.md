@@ -9,8 +9,8 @@ Design docs and plans are in `docs/superpowers/specs/` and
 `docs/superpowers/plans/`. Earlier phase history is in git log.
 
 **Most recently completed plan:**
-`docs/superpowers/plans/2026-06-15-persistent-collectible-world.md` — all 11
-tasks done.
+`docs/superpowers/plans/2026-06-21-replication-offload.md` —
+encode/send offloaded from Hub actor to partitioned dispatcher workers.
 
 ### Collectible field (`internal/game/`)
 
@@ -63,6 +63,25 @@ tasks done.
 - Score incremented in-memory; persistence is async. Sync submit + drain on
   disconnect/logout/shutdown.
 
+### Replication dispatcher (`internal/realtime/replication_dispatcher.go`)
+
+- `ReplicationDispatcher` — partitioned worker pool (recipientID % workers),
+  bounded per-worker queues (512), non-blocking Submit. Hub owns lifecycle.
+- `broadcastReplication` still builds `byRecipient` in the actor, then
+  `copyReplicationChanges` + `Submit` asynchronously. Actor no longer waits
+  for JSON encode or `client.Send`.
+- Each worker: `TryEncodeReplicationUpdate` → skip empty / count encode
+  errors → `client.Send`. Send failure triggers `DisconnectUser` through
+  actor channel (Hub-owned disconnect).
+- Stats (`DispatcherStats` in `HubSnapshot`): submitted, dropped, encoded,
+  skipped (empty), encode errors, send failures, encoded bytes, queue depth,
+  worker count. Legacy `ReplicationMessages`/`ReplicationBytes` populated
+  from `Dispatcher.Encoded`/`EncodedBytes`.
+- Worker count: `max(2, min(8, GOMAXPROCS/2))`, benchmark shows ~21-25%
+  broadcast tick latency reduction at 2000-3000 clients vs inline encode/send.
+- Known limits: queue drop under sustained overload (counters visible in
+  stats). Per-recipient ordering preserved (deterministic partitioning).
+
 ### Leaderboard
 
 - `GET /api/leaderboard/online` — session auth, GET only.
@@ -111,7 +130,7 @@ go vet ./...                                       # lint
 cmd/map-walker/       — entrypoint, flags, graceful shutdown
 config/               — collectible region JSON
 internal/game/        — World, AOI, CollectibleField (pure logic, no I/O)
-internal/realtime/    — Hub actor, Client, messages, replication, persistence/score ifaces
+internal/realtime/    — Hub actor, Client, messages, replication, dispatcher, persistence/score ifaces
 internal/server/      — HTTP routes, WebSocket upgrade, auth/appearance/leaderboard endpoints
 internal/auth/        — registration/login, sessions, bcrypt, synthetic identity
 internal/storage/     — SQLite/MySQL, forward migrations, user/session/pos/score persistence
@@ -122,6 +141,8 @@ web/                  — Leaflet frontend, auth card, appearance editor, gems, 
 ## Core Conventions
 
 - **Hub.Run() is the only actor** — all state mutation inside its select loop. No locks elsewhere.
+  Encode/send is offloaded to partitioned dispatcher workers (`ReplicationDispatcher`);
+  send failure reported back via `DisconnectUser` channel.
 - **AOI**: 600m cells, 500m enter / 600m leave hysteresis, 9-cell scan. Collectibles use same grid.
 - **Ticks**: 20 Hz sim, 10 Hz broadcast, 5s position persistence, 1s stats.
 - **Persistence**: async Submit for periodic saves; sync SubmitSync for disconnect/logout/shutdown. ScorePersister coalesces to highest score, retries with exponential backoff (cap 30s).
