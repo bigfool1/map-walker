@@ -175,6 +175,136 @@ func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader Replicati
 	return jobs
 }
 
+// BuildConcrete 与 Build 相同，但接受 *concreteReader 以避免 interface 派发开销。
+// 仅用于 benchmark 对比；生产代码仍使用 Build + ReplicationBuildReader。
+func (b *ReplicationBuilder) BuildConcrete(input ReplicationBuildInput, r *concreteReader) []replicationJob {
+	start := time.Now()
+	byRecipient := make(map[int64]*ReplicationChanges)
+
+	for _, playerID := range input.MovedIDs {
+		if !r.Connected(playerID) {
+			continue
+		}
+		if position, ok := r.PlayerPosition(playerID); ok {
+			entry := getOrCreateRecipient(byRecipient, playerID)
+			entry.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
+		}
+	}
+
+	for _, moverID := range input.MovedIDs {
+		position, ok := r.PlayerPosition(moverID)
+		if !ok {
+			continue
+		}
+		oldNeighbors := input.OldNeighborsByMover[moverID]
+		for _, neighborID := range r.VisibleNeighbors(moverID) {
+			if _, inOld := oldNeighbors[neighborID]; !inOld {
+				continue
+			}
+			if !r.Connected(neighborID) {
+				continue
+			}
+			entry := getOrCreateRecipient(byRecipient, neighborID)
+			entry.Positions = append(entry.Positions, position)
+		}
+	}
+
+	for _, state := range input.PendingEntered {
+		for _, neighborID := range r.VisibleNeighbors(state.ID) {
+			if !r.Connected(neighborID) {
+				continue
+			}
+			entry := getOrCreateRecipient(byRecipient, neighborID)
+			entry.Entered = append(entry.Entered, state)
+		}
+	}
+
+	for recipientID, leftIDs := range input.PendingLeft {
+		if !r.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.LeftPlayerIDs = append(entry.LeftPlayerIDs, leftIDs...)
+	}
+
+	for playerID, appearance := range input.PendingAppearances {
+		if r.Connected(playerID) {
+			entry := getOrCreateRecipient(byRecipient, playerID)
+			entry.Appearances = append(entry.Appearances, PlayerAppearanceUpdate{
+				PlayerID:   playerID,
+				Appearance: appearance,
+			})
+		}
+		for _, neighborID := range r.VisibleNeighbors(playerID) {
+			if r.Connected(neighborID) {
+				entry := getOrCreateRecipient(byRecipient, neighborID)
+				entry.Appearances = append(entry.Appearances, PlayerAppearanceUpdate{
+					PlayerID:   playerID,
+					Appearance: appearance,
+				})
+			}
+		}
+	}
+
+	for recipientID, items := range input.CollectEntered {
+		if !r.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectiblesEntered = append(entry.CollectiblesEntered, items...)
+	}
+
+	for recipientID, ids := range input.CollectLeft {
+		if !r.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectibleIDsLeft = append(entry.CollectibleIDsLeft, ids...)
+	}
+
+	for recipientID, items := range input.CollectSpawned {
+		if !r.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectiblesSpawned = append(entry.CollectiblesSpawned, items...)
+	}
+
+	for recipientID, ids := range input.CollectCollected {
+		if !r.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectibleIDsCollected = append(entry.CollectibleIDsCollected, ids...)
+	}
+
+	accumDone := time.Now()
+	copyStart := time.Now()
+	jobs := make([]replicationJob, 0, len(byRecipient))
+	for recipientID, changes := range byRecipient {
+		client, connected := r.Client(recipientID)
+		if !connected {
+			continue
+		}
+		jobs = append(jobs, replicationJob{
+			recipientID: recipientID,
+			tick:        input.Tick,
+			client:      client,
+			changes:     copyReplicationChanges(*changes),
+		})
+	}
+	copyDuration := time.Since(copyStart)
+
+	b.stats = BuilderStats{
+		Recipients:           len(byRecipient),
+		Jobs:                 len(jobs),
+		AccumulationDuration: accumDone.Sub(start),
+		CopyDuration:         copyDuration,
+		TotalDuration:        time.Since(start),
+	}
+	return jobs
+}
+
 // getOrCreateRecipient 在广播本地累积 map 中获取或创建接收者条目。
 func getOrCreateRecipient(byRecipient map[int64]*ReplicationChanges, recipientID int64) *ReplicationChanges {
 	entry, ok := byRecipient[recipientID]

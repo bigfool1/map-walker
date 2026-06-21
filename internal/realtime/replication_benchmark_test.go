@@ -190,6 +190,105 @@ func benchDrainAllDirect(clients []*testClient) (msgCount int, byteCount int) {
 	return
 }
 
+// BenchmarkReplicationBuilder 直接测量 builder fanout 耗时，与 AOI 变更和 dispatcher 编码分离。
+// 同时对比 interface reader 和 concrete reader，检查 interface 派发是否有可测量的开销。
+func BenchmarkReplicationBuilder(b *testing.B) {
+	for _, numPlayers := range []int{1000, 2000} {
+		b.Run(fmt.Sprintf("interface-%d", numPlayers), func(b *testing.B) {
+			benchmarkBuilder(b, numPlayers, true)
+		})
+		b.Run(fmt.Sprintf("concrete-%d", numPlayers), func(b *testing.B) {
+			benchmarkBuilder(b, numPlayers, false)
+		})
+	}
+}
+
+func benchmarkBuilder(b *testing.B, numPlayers int, useInterface bool) {
+	cfg := benchOriginCfg()
+	aoiCfg := game.AOIConfigFromWorld(cfg)
+
+	world := game.NewWorld(cfg)
+	aoi := game.NewAOIIndex(aoiCfg)
+	clients := make(map[int64]ClientSender, numPlayers)
+
+	for i := 0; i < numPlayers; i++ {
+		id := int64(i + 1)
+		localX, localY := benchClientPosition(i)
+		lat, lng := aoiCfg.LocalToLatLng(localX, localY)
+		world.AddPlayerWithState(id, fmt.Sprintf("p%d", i), lat, lng, game.DefaultAppearance())
+		aoi.Insert(id, lat, lng)
+		clients[id] = NewTestClient(id, benchClientBuffer)
+	}
+
+	// 80% 的玩家作为移动者
+	moveCount := int(float64(numPlayers) * benchMovementRatio)
+	movedIDs := make([]int64, moveCount)
+	for i := 0; i < moveCount; i++ {
+		movedIDs[i] = int64(i + 1)
+	}
+
+	// 为所有移动者捕获旧邻居
+	oldNeighborsByMover := make(map[int64]map[int64]struct{}, moveCount)
+	for _, moverID := range movedIDs {
+		neighbors := aoi.VisibleNeighbors(moverID)
+		set := make(map[int64]struct{}, len(neighbors))
+		for _, n := range neighbors {
+			set[n] = struct{}{}
+		}
+		oldNeighborsByMover[moverID] = set
+	}
+
+	// 少量 pending 变更
+	pendingAppearances := map[int64]game.Appearance{
+		1: {Color: "#ff0000", Shape: "square"},
+		2: {Color: "#00ff00", Shape: "circle"},
+	}
+	collectEntered := map[int64][]CollectibleEnteredItem{
+		1: {{ID: 100, Lat: 31.23, Lng: 121.47}},
+		2: {{ID: 200, Lat: 31.23, Lng: 121.48}},
+	}
+
+	input := ReplicationBuildInput{
+		Tick:                42,
+		MovedIDs:            movedIDs,
+		OldNeighborsByMover: oldNeighborsByMover,
+		PendingAppearances:  pendingAppearances,
+		CollectEntered:      collectEntered,
+	}
+
+	cr := concreteReader{clients: clients, aoi: aoi, world: world}
+	var ifaceReader ReplicationBuildReader = &cr
+	var builder ReplicationBuilder
+
+	// 预热
+	for range 3 {
+		if useInterface {
+			builder.Build(input, ifaceReader)
+		} else {
+			builder.BuildConcrete(input, &cr)
+		}
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		var jobs []replicationJob
+		if useInterface {
+			jobs = builder.Build(input, ifaceReader)
+		} else {
+			jobs = builder.BuildConcrete(input, &cr)
+		}
+		bs := builder.Stats()
+
+		b.ReportMetric(float64(len(jobs)), "jobs/op")
+		b.ReportMetric(float64(bs.Recipients), "recipients/op")
+		b.ReportMetric(float64(bs.AccumulationDuration.Microseconds()), "accum_us/op")
+		b.ReportMetric(float64(bs.CopyDuration.Microseconds()), "copy_us/op")
+		b.ReportMetric(float64(bs.TotalDuration.Microseconds()), "total_us/op")
+	}
+}
+
 // BenchmarkReplicationDispatcher 独立测量 dispatcher encode/send 吞吐量，
 // 不依赖 Hub 或 AOI，用于校准 worker 数和队列大小。
 func BenchmarkReplicationDispatcher(b *testing.B) {
