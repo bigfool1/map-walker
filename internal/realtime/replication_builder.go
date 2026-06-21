@@ -28,7 +28,6 @@ type ReplicationBuildReader interface {
 type ReplicationBuilder struct{}
 
 // Build 从 input 和 reader 构建 per-recipient ReplicationChanges map。
-// 返回的 map 仍可被调用方继续累积（如 collectible fanout），builder 不保留对它的引用。
 func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader ReplicationBuildReader) map[int64]*ReplicationChanges {
 	byRecipient := make(map[int64]*ReplicationChanges)
 
@@ -100,6 +99,42 @@ func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader Replicati
 				})
 			}
 		}
+	}
+
+	// 收集品进入：按接收者累积
+	for recipientID, items := range input.CollectEntered {
+		if !reader.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectiblesEntered = append(entry.CollectiblesEntered, items...)
+	}
+
+	// 收集品离开：按接收者 key 存储
+	for recipientID, ids := range input.CollectLeft {
+		if !reader.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectibleIDsLeft = append(entry.CollectibleIDsLeft, ids...)
+	}
+
+	// 收集品生成：按接收者累积
+	for recipientID, items := range input.CollectSpawned {
+		if !reader.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectiblesSpawned = append(entry.CollectiblesSpawned, items...)
+	}
+
+	// 收集品被拾取：按接收者累积
+	for recipientID, ids := range input.CollectCollected {
+		if !reader.Connected(recipientID) {
+			continue
+		}
+		entry := getOrCreateRecipient(byRecipient, recipientID)
+		entry.CollectibleIDsCollected = append(entry.CollectibleIDsCollected, ids...)
 	}
 
 	return byRecipient

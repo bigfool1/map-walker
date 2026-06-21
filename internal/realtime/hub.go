@@ -887,46 +887,14 @@ func (h *Hub) broadcastReplication() {
 		PendingEntered:      pendingEntered,
 		PendingLeft:         pendingLeft,
 		PendingAppearances:  pendingAppearances,
+		CollectEntered:      collectEntered,
+		CollectLeft:         collectLeft,
+		CollectSpawned:      collectSpawned,
+		CollectCollected:    collectCollected,
 	}
 	reader := &hubReader{clients: h.clients, aoi: h.aoi, world: h.world}
 	var builder ReplicationBuilder
 	byRecipient := builder.Build(input, reader)
-
-	// 收集品进入：按接收者累积
-	for recipientID, items := range collectEntered {
-		if _, connected := h.clients[recipientID]; !connected {
-			continue
-		}
-		entry := getOrCreateRecipient(byRecipient, recipientID)
-		entry.CollectiblesEntered = append(entry.CollectiblesEntered, items...)
-	}
-
-	// 收集品离开：按接收者 key 存储
-	for recipientID, ids := range collectLeft {
-		if _, connected := h.clients[recipientID]; !connected {
-			continue
-		}
-		entry := getOrCreateRecipient(byRecipient, recipientID)
-		entry.CollectibleIDsLeft = append(entry.CollectibleIDsLeft, ids...)
-	}
-
-	// 收集品生成：按接收者累积
-	for recipientID, items := range collectSpawned {
-		if _, connected := h.clients[recipientID]; !connected {
-			continue
-		}
-		entry := getOrCreateRecipient(byRecipient, recipientID)
-		entry.CollectiblesSpawned = append(entry.CollectiblesSpawned, items...)
-	}
-
-	// 收集品被拾取：按接收者累积
-	for recipientID, ids := range collectCollected {
-		if _, connected := h.clients[recipientID]; !connected {
-			continue
-		}
-		entry := getOrCreateRecipient(byRecipient, recipientID)
-		entry.CollectibleIDsCollected = append(entry.CollectibleIDsCollected, ids...)
-	}
 
 	// 提交 encode/send 到 dispatcher（异步，不阻塞广播 tick）
 	for recipientID, changes := range byRecipient {

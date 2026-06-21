@@ -306,3 +306,102 @@ func TestBuildEmptyInputReturnsEmptyMap(t *testing.T) {
 		t.Errorf("empty input should produce empty map, got %d entries", len(result))
 	}
 }
+
+func TestBuildCollectibleEnteredFanout(t *testing.T) {
+	_, aoi, clients := playerFanoutFixture()
+	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
+	var builder ReplicationBuilder
+
+	input := ReplicationBuildInput{
+		CollectEntered: map[int64][]CollectibleEnteredItem{
+			1: {{ID: 100, Lat: 31.23, Lng: 121.47}},
+		},
+	}
+	result := builder.Build(input, reader)
+
+	if result[1] == nil {
+		t.Fatal("alice should have changes")
+	}
+	if len(result[1].CollectiblesEntered) != 1 {
+		t.Fatalf("alice should have 1 collectible entered, got %d", len(result[1].CollectiblesEntered))
+	}
+}
+
+func TestBuildCollectibleLeftFanout(t *testing.T) {
+	_, aoi, clients := playerFanoutFixture()
+	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
+	var builder ReplicationBuilder
+
+	input := ReplicationBuildInput{
+		CollectLeft: map[int64][]uint64{
+			1: {100, 200},
+		},
+	}
+	result := builder.Build(input, reader)
+
+	if result[1] == nil {
+		t.Fatal("alice should have changes")
+	}
+	if len(result[1].CollectibleIDsLeft) != 2 {
+		t.Fatalf("alice should have 2 collectibles left, got %d", len(result[1].CollectibleIDsLeft))
+	}
+}
+
+func TestBuildCollectibleSpawnedFanout(t *testing.T) {
+	_, aoi, clients := playerFanoutFixture()
+	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
+	var builder ReplicationBuilder
+
+	input := ReplicationBuildInput{
+		CollectSpawned: map[int64][]CollectibleSpawnedItem{
+			1: {{ID: 300, Lat: 31.23, Lng: 121.47}},
+		},
+	}
+	result := builder.Build(input, reader)
+
+	if result[1] == nil {
+		t.Fatal("alice should have changes")
+	}
+	if len(result[1].CollectiblesSpawned) != 1 {
+		t.Fatalf("alice should have 1 collectible spawned, got %d", len(result[1].CollectiblesSpawned))
+	}
+}
+
+func TestBuildCollectibleCollectedFanout(t *testing.T) {
+	_, aoi, clients := playerFanoutFixture()
+	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
+	var builder ReplicationBuilder
+
+	input := ReplicationBuildInput{
+		CollectCollected: map[int64][]uint64{
+			1: {100},
+		},
+	}
+	result := builder.Build(input, reader)
+
+	if result[1] == nil {
+		t.Fatal("alice should have changes")
+	}
+	if len(result[1].CollectibleIDsCollected) != 1 {
+		t.Fatalf("alice should have 1 collectible collected, got %d", len(result[1].CollectibleIDsCollected))
+	}
+}
+
+func TestBuildCollectibleSkipsDisconnected(t *testing.T) {
+	_, aoi, clients := playerFanoutFixture()
+	// bob 断连
+	delete(clients, 2)
+	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
+	var builder ReplicationBuilder
+
+	input := ReplicationBuildInput{
+		CollectEntered: map[int64][]CollectibleEnteredItem{
+			2: {{ID: 100, Lat: 31.23, Lng: 121.47}},
+		},
+	}
+	result := builder.Build(input, reader)
+
+	if result[2] != nil {
+		t.Error("disconnected bob should have no collectible changes")
+	}
+}
