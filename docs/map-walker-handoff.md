@@ -9,8 +9,9 @@ Design docs and plans are in `docs/superpowers/specs/` and
 `docs/superpowers/plans/`. Earlier phase history is in git log.
 
 **Most recently completed plan:**
-`docs/superpowers/plans/2026-06-21-replication-offload.md` —
-encode/send offloaded from Hub actor to partitioned dispatcher workers.
+`docs/superpowers/plans/2026-06-21-replication-builder.md` —
+per-recipient replication fanout extracted from Hub actor into synchronous
+`ReplicationBuilder`.
 
 ### Collectible field (`internal/game/`)
 
@@ -63,24 +64,36 @@ encode/send offloaded from Hub actor to partitioned dispatcher workers.
 - Score incremented in-memory; persistence is async. Sync submit + drain on
   disconnect/logout/shutdown.
 
+### Replication builder (`internal/realtime/replication_builder.go`)
+
+- `ReplicationBuilder.Build` — synchronous, runs on Hub actor goroutine.
+  Takes `ReplicationBuildInput` + `ReplicationBuildReader`, returns immutable
+  `[]replicationJob`.
+- Reader interface (`Connected`, `Client`, `VisibleNeighbors`,
+  `PlayerPosition`) makes actor-owned data dependencies explicit. Only valid
+  during `Build`.
+- `broadcastReplication` flow: gather actor-owned state → `builder.Build(input,
+  hubReader)` → submit jobs to dispatcher. Actor no longer owns per-recipient
+  fanout loops.
+- `BuilderStats` in `HubSnapshot`: recipients, jobs, accumulation/copy/total
+  durations. Separate from `DispatcherStats`.
+- Benchmark: ~1.5ms at 2000 recipients (fanout + immutable copy). Interface
+  overhead negligible vs concrete reader.
+- Next bottleneck: AOI mutation still synchronous in actor
+  (`snapshotMoverVisibility`, `applyMovementAOIChanges`,
+  `recalcCollectibleVisibility`).
+
 ### Replication dispatcher (`internal/realtime/replication_dispatcher.go`)
 
 - `ReplicationDispatcher` — partitioned worker pool (recipientID % workers),
   bounded per-worker queues (512), non-blocking Submit. Hub owns lifecycle.
-- `broadcastReplication` still builds `byRecipient` in the actor, then
-  `copyReplicationChanges` + `Submit` asynchronously. Actor no longer waits
-  for JSON encode or `client.Send`.
 - Each worker: `TryEncodeReplicationUpdate` → skip empty / count encode
   errors → `client.Send`. Send failure triggers `DisconnectUser` through
-  actor channel (Hub-owned disconnect).
-- Stats (`DispatcherStats` in `HubSnapshot`): submitted, dropped, encoded,
-  skipped (empty), encode errors, send failures, encoded bytes, queue depth,
-  worker count. Legacy `ReplicationMessages`/`ReplicationBytes` populated
-  from `Dispatcher.Encoded`/`EncodedBytes`.
-- Worker count: `max(2, min(8, GOMAXPROCS/2))`, benchmark shows ~21-25%
-  broadcast tick latency reduction at 2000-3000 clients vs inline encode/send.
-- Known limits: queue drop under sustained overload (counters visible in
-  stats). Per-recipient ordering preserved (deterministic partitioning).
+  actor channel.
+- Worker count: `max(2, min(8, GOMAXPROCS/2))`.
+- Counter semantics: `ReplicationRecipients` = builder-produced jobs submitted
+  to dispatcher; `ReplicationMessages` = dispatcher-encoded non-empty
+  messages; `ReplicationBytes` = dispatcher-encoded bytes.
 
 ### Leaderboard
 
