@@ -15,6 +15,15 @@ type DispatcherStats struct {
 	WorkerCount  int
 }
 
+// BuilderStats 是 ReplicationBuilder 单次 Build 调用的指标快照。
+type BuilderStats struct {
+	Recipients           int           // 触达的不同接收者数
+	Jobs                 int           // 产出的 job 数
+	AccumulationDuration time.Duration // 按接收者累积耗时
+	CopyDuration         time.Duration // 深拷贝耗时
+	TotalDuration        time.Duration // 总耗时
+}
+
 // HubSnapshot is an immutable point-in-time aggregate of the most recently
 // completed one-second Hub stats interval. Reads are safe from any goroutine.
 type HubSnapshot struct {
@@ -29,6 +38,7 @@ type HubSnapshot struct {
 	ReplicationMessages   uint64
 	ReplicationRecipients uint64
 	ReplicationBytes      uint64
+	Builder               BuilderStats
 	Dispatcher            DispatcherStats
 	SampledAt             time.Time
 }

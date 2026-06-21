@@ -1963,6 +1963,44 @@ func TestHubSnapshotDispatcherStats(t *testing.T) {
 	}
 }
 
+func TestHubSnapshotBuilderStats(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1, 8)
+	bob := NewTestClient(2, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+
+	// 触发移动 + 广播以驱动 builder
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+	bob.drainAll()
+
+	// 触发统计 tick
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+	if snap == nil {
+		t.Fatal("snapshot is nil after stats tick")
+	}
+	if snap.Builder.Jobs == 0 {
+		t.Error("Builder.Jobs=0 after broadcast with movement")
+	}
+	if snap.Builder.Recipients == 0 {
+		t.Error("Builder.Recipients=0 after broadcast with movement")
+	}
+}
+
 func TestHubDispatcherSendFailureDisconnectsClient(t *testing.T) {
 	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, make(chan time.Time, 8))
 	go hub.Run()

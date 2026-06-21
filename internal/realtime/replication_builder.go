@@ -1,6 +1,10 @@
 package realtime
 
-import "map-walker/internal/game"
+import (
+	"time"
+
+	"map-walker/internal/game"
+)
 
 // ReplicationBuildInput 包含 actor 已收集的值，builder 只读不修改。
 type ReplicationBuildInput struct {
@@ -25,10 +29,16 @@ type ReplicationBuildReader interface {
 }
 
 // ReplicationBuilder 同步构建 replicationJob，不编码、不发送、不修改 Hub 状态。
-type ReplicationBuilder struct{}
+type ReplicationBuilder struct {
+	stats BuilderStats
+}
+
+// Stats 返回最后一次 Build 调用的指标快照。
+func (b *ReplicationBuilder) Stats() BuilderStats { return b.stats }
 
 // Build 从 input 和 reader 构建不可变 replicationJob 切片。
 func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader ReplicationBuildReader) []replicationJob {
+	start := time.Now()
 	byRecipient := make(map[int64]*ReplicationChanges)
 
 	// 自位置：每个已连接的移动者
@@ -138,6 +148,8 @@ func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader Replicati
 	}
 
 	// 转换为不可变 job 切片
+	accumDone := time.Now()
+	copyStart := time.Now()
 	jobs := make([]replicationJob, 0, len(byRecipient))
 	for recipientID, changes := range byRecipient {
 		client, connected := reader.Client(recipientID)
@@ -150,6 +162,15 @@ func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader Replicati
 			client:      client,
 			changes:     copyReplicationChanges(*changes),
 		})
+	}
+	copyDuration := time.Since(copyStart)
+
+	b.stats = BuilderStats{
+		Recipients:           len(byRecipient),
+		Jobs:                 len(jobs),
+		AccumulationDuration: accumDone.Sub(start),
+		CopyDuration:         copyDuration,
+		TotalDuration:        time.Since(start),
 	}
 	return jobs
 }

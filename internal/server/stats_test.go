@@ -23,6 +23,13 @@ func stubHubSnapshot() *realtime.HubSnapshot {
 		ConnectedClients:    3,
 		SimulationTicks:     100,
 		ReplicationMessages: 50,
+		Builder: realtime.BuilderStats{
+			Recipients:           10,
+			Jobs:                 8,
+			AccumulationDuration: 100 * time.Microsecond,
+			CopyDuration:         50 * time.Microsecond,
+			TotalDuration:        150 * time.Microsecond,
+		},
 		Dispatcher: realtime.DispatcherStats{
 			Submitted:  100,
 			Encoded:    80,

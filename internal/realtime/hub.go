@@ -140,6 +140,12 @@ type intervalStats struct {
 	replicationMessages     uint64
 	replicationRecipients   uint64
 	replicationBytes        uint64
+	builderCalls            uint64
+	builderJobs             uint64
+	builderRecipients       uint64
+	builderAccumDuration    int64 // nanoseconds
+	builderCopyDuration     int64 // nanoseconds
+	builderTotalDuration    int64 // nanoseconds
 }
 
 func NewHub() *Hub {
@@ -895,6 +901,13 @@ func (h *Hub) broadcastReplication() {
 	reader := &hubReader{clients: h.clients, aoi: h.aoi, world: h.world}
 	var builder ReplicationBuilder
 	jobs := builder.Build(input, reader)
+	bs := builder.Stats()
+	h.stats.builderCalls++
+	h.stats.builderJobs += uint64(bs.Jobs)
+	h.stats.builderRecipients += uint64(bs.Recipients)
+	h.stats.builderAccumDuration += int64(bs.AccumulationDuration)
+	h.stats.builderCopyDuration += int64(bs.CopyDuration)
+	h.stats.builderTotalDuration += int64(bs.TotalDuration)
 
 	// 提交 encode/send 到 dispatcher（异步，不阻塞广播 tick）
 	for _, job := range jobs {
@@ -1013,7 +1026,14 @@ func (h *Hub) logStats() {
 		ReplicationMessages:   h.stats.replicationMessages,
 		ReplicationRecipients: h.stats.replicationRecipients,
 		ReplicationBytes:      h.stats.replicationBytes,
-		SampledAt:             time.Now(),
+		Builder: BuilderStats{
+			Recipients:           int(h.stats.builderRecipients),
+			Jobs:                 int(h.stats.builderJobs),
+			AccumulationDuration: time.Duration(h.stats.builderAccumDuration),
+			CopyDuration:         time.Duration(h.stats.builderCopyDuration),
+			TotalDuration:        time.Duration(h.stats.builderTotalDuration),
+		},
+		SampledAt: time.Now(),
 	}
 	// 从 dispatcher 读取编码/字节统计（替换旧的 actor 内联统计）
 	ds := h.dispatcher.Stats()
@@ -1024,7 +1044,7 @@ func (h *Hub) logStats() {
 	h.snapshot.Store(snap)
 
 	log.Printf(
-		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d",
+		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d builder_calls=%d builder_recipients=%d builder_jobs=%d builder_accum_us=%d builder_copy_us=%d builder_total_us=%d",
 		snap.ConnectedClients,
 		snap.AcceptedInputs,
 		snap.SimulationTicks,
@@ -1045,6 +1065,12 @@ func (h *Hub) logStats() {
 		ds.QueueDepth,
 		ds.WorkerCount,
 		ds.EncodedBytes,
+		h.stats.builderCalls,
+		h.stats.builderRecipients,
+		h.stats.builderJobs,
+		snap.Builder.AccumulationDuration.Microseconds(),
+		snap.Builder.CopyDuration.Microseconds(),
+		snap.Builder.TotalDuration.Microseconds(),
 	)
 	h.stats = intervalStats{}
 }
