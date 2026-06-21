@@ -8,10 +8,9 @@ import (
 
 // ReplicationBuildInput 包含 actor 已收集的值，builder 只读不修改。
 type ReplicationBuildInput struct {
-	Tick                uint64
-	MovedIDs            []int64
-	OldNeighborsByMover map[int64]map[int64]struct{}
-	PendingEntered      []game.PlayerState
+	Tick               uint64
+	MovementDeltas     []game.MovementDelta
+	PendingEntered     []game.PlayerState
 	PendingLeft         map[int64][]int64
 	PendingAppearances  map[int64]game.Appearance
 	CollectEntered      map[int64][]CollectibleEnteredItem
@@ -42,27 +41,20 @@ func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader Replicati
 	byRecipient := make(map[int64]*ReplicationChanges)
 
 	// 自位置：每个已连接的移动者
-	for _, playerID := range input.MovedIDs {
-		if !reader.Connected(playerID) {
-			continue
+	// 稳定邻居位置：从移动者扇出到移动前后都可见的邻居
+	for _, delta := range input.MovementDeltas {
+		if reader.Connected(delta.PlayerID) {
+			if position, ok := reader.PlayerPosition(delta.PlayerID); ok {
+				entry := getOrCreateRecipient(byRecipient, delta.PlayerID)
+				entry.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
+			}
 		}
-		if position, ok := reader.PlayerPosition(playerID); ok {
-			entry := getOrCreateRecipient(byRecipient, playerID)
-			entry.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
-		}
-	}
 
-	// 稳定关系位置：从移动者扇出到旧邻居（同时仍在最终可见集中）
-	for _, moverID := range input.MovedIDs {
-		position, ok := reader.PlayerPosition(moverID)
+		position, ok := reader.PlayerPosition(delta.PlayerID)
 		if !ok {
 			continue
 		}
-		oldNeighbors := input.OldNeighborsByMover[moverID]
-		for _, neighborID := range reader.VisibleNeighbors(moverID) {
-			if _, inOld := oldNeighbors[neighborID]; !inOld {
-				continue
-			}
+		for _, neighborID := range delta.Stable {
 			if !reader.Connected(neighborID) {
 				continue
 			}
@@ -181,26 +173,19 @@ func (b *ReplicationBuilder) BuildConcrete(input ReplicationBuildInput, r *concr
 	start := time.Now()
 	byRecipient := make(map[int64]*ReplicationChanges)
 
-	for _, playerID := range input.MovedIDs {
-		if !r.Connected(playerID) {
-			continue
+	for _, delta := range input.MovementDeltas {
+		if r.Connected(delta.PlayerID) {
+			if position, ok := r.PlayerPosition(delta.PlayerID); ok {
+				entry := getOrCreateRecipient(byRecipient, delta.PlayerID)
+				entry.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
+			}
 		}
-		if position, ok := r.PlayerPosition(playerID); ok {
-			entry := getOrCreateRecipient(byRecipient, playerID)
-			entry.SelfPosition = &SelfPosition{Lat: position.Lat, Lng: position.Lng}
-		}
-	}
 
-	for _, moverID := range input.MovedIDs {
-		position, ok := r.PlayerPosition(moverID)
+		position, ok := r.PlayerPosition(delta.PlayerID)
 		if !ok {
 			continue
 		}
-		oldNeighbors := input.OldNeighborsByMover[moverID]
-		for _, neighborID := range r.VisibleNeighbors(moverID) {
-			if _, inOld := oldNeighbors[neighborID]; !inOld {
-				continue
-			}
+		for _, neighborID := range delta.Stable {
 			if !r.Connected(neighborID) {
 				continue
 			}

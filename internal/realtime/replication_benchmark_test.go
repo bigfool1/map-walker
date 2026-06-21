@@ -227,15 +227,18 @@ func benchmarkBuilder(b *testing.B, numPlayers int, useInterface bool) {
 		movedIDs[i] = int64(i + 1)
 	}
 
-	// 为所有移动者捕获旧邻居
-	oldNeighborsByMover := make(map[int64]map[int64]struct{}, moveCount)
-	for _, moverID := range movedIDs {
+	// 为所有移动者构建 movement deltas（benchmark 无实际移动，Stable = 旧邻居）
+	movementDeltas := make([]game.MovementDelta, moveCount)
+	for i, moverID := range movedIDs {
 		neighbors := aoi.VisibleNeighbors(moverID)
-		set := make(map[int64]struct{}, len(neighbors))
+		stable := make([]int64, 0, len(neighbors))
 		for _, n := range neighbors {
-			set[n] = struct{}{}
+			stable = append(stable, n)
 		}
-		oldNeighborsByMover[moverID] = set
+		movementDeltas[i] = game.MovementDelta{
+			PlayerID: moverID,
+			Stable:   stable,
+		}
 	}
 
 	// 少量 pending 变更
@@ -249,11 +252,10 @@ func benchmarkBuilder(b *testing.B, numPlayers int, useInterface bool) {
 	}
 
 	input := ReplicationBuildInput{
-		Tick:                42,
-		MovedIDs:            movedIDs,
-		OldNeighborsByMover: oldNeighborsByMover,
-		PendingAppearances:  pendingAppearances,
-		CollectEntered:      collectEntered,
+		Tick:              42,
+		MovementDeltas:    movementDeltas,
+		PendingAppearances: pendingAppearances,
+		CollectEntered:     collectEntered,
 	}
 
 	cr := concreteReader{clients: clients, aoi: aoi, world: world}

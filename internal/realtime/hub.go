@@ -886,10 +886,24 @@ func (h *Hub) broadcastReplication() {
 	}
 
 	tick := h.world.Tick()
+
+	// 从旧可见邻居快照构造 MovementDeltas（暂时，Task 3 将替换为 applyMovementAOIDeltas）
+	movementDeltas := make([]game.MovementDelta, 0, len(movedIDs))
+	for _, moverID := range movedIDs {
+		oldSet := oldNeighborsByMover[moverID]
+		stable := make([]int64, 0, len(oldSet))
+		for nid := range oldSet {
+			stable = append(stable, nid)
+		}
+		movementDeltas = append(movementDeltas, game.MovementDelta{
+			PlayerID: moverID,
+			Stable:   stable,
+		})
+	}
+
 	input := ReplicationBuildInput{
 		Tick:                tick,
-		MovedIDs:            movedIDs,
-		OldNeighborsByMover: oldNeighborsByMover,
+		MovementDeltas:      movementDeltas,
 		PendingEntered:      pendingEntered,
 		PendingLeft:         pendingLeft,
 		PendingAppearances:  pendingAppearances,

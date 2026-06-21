@@ -134,7 +134,7 @@ func TestBuildSelfPositionFanout(t *testing.T) {
 	var builder ReplicationBuilder
 
 	input := ReplicationBuildInput{
-		MovedIDs: []int64{1, 2},
+		MovementDeltas: []game.MovementDelta{{PlayerID: 1}, {PlayerID: 2}},
 	}
 	jobs := builder.Build(input, reader)
 
@@ -162,10 +162,7 @@ func TestBuildStableNeighborPositionFanout(t *testing.T) {
 	var builder ReplicationBuilder
 
 	input := ReplicationBuildInput{
-		MovedIDs: []int64{1},
-		OldNeighborsByMover: map[int64]map[int64]struct{}{
-			1: {2: {}},
-		},
+		MovementDeltas: []game.MovementDelta{{PlayerID: 1, Stable: []int64{2}}},
 	}
 	jobs := builder.Build(input, reader)
 
@@ -188,10 +185,7 @@ func TestBuildStableNeighborSkipsNotConnected(t *testing.T) {
 	var builder ReplicationBuilder
 
 	input := ReplicationBuildInput{
-		MovedIDs: []int64{1},
-		OldNeighborsByMover: map[int64]map[int64]struct{}{
-			1: {2: {}},
-		},
+		MovementDeltas: []game.MovementDelta{{PlayerID: 1, Stable: []int64{2}}},
 	}
 	jobs := builder.Build(input, reader)
 
@@ -383,7 +377,7 @@ func TestBuildDisconnectedRecipientSkipsJob(t *testing.T) {
 	var builder ReplicationBuilder
 
 	input := ReplicationBuildInput{
-		MovedIDs: []int64{1},
+		MovementDeltas: []game.MovementDelta{{PlayerID: 1}},
 	}
 	jobs := builder.Build(input, reader)
 
