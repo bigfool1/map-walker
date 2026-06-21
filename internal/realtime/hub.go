@@ -894,21 +894,12 @@ func (h *Hub) broadcastReplication() {
 	}
 	reader := &hubReader{clients: h.clients, aoi: h.aoi, world: h.world}
 	var builder ReplicationBuilder
-	byRecipient := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
 	// 提交 encode/send 到 dispatcher（异步，不阻塞广播 tick）
-	for recipientID, changes := range byRecipient {
-		client, connected := h.clients[recipientID]
-		if !connected {
-			continue
-		}
+	for _, job := range jobs {
 		h.stats.replicationRecipients++
-		h.dispatcher.Submit(replicationJob{
-			recipientID: recipientID,
-			tick:        tick,
-			client:      client,
-			changes:     copyReplicationChanges(*changes),
-		})
+		h.dispatcher.Submit(job)
 	}
 }
 

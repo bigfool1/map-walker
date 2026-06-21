@@ -27,8 +27,8 @@ type ReplicationBuildReader interface {
 // ReplicationBuilder 同步构建 replicationJob，不编码、不发送、不修改 Hub 状态。
 type ReplicationBuilder struct{}
 
-// Build 从 input 和 reader 构建 per-recipient ReplicationChanges map。
-func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader ReplicationBuildReader) map[int64]*ReplicationChanges {
+// Build 从 input 和 reader 构建不可变 replicationJob 切片。
+func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader ReplicationBuildReader) []replicationJob {
 	byRecipient := make(map[int64]*ReplicationChanges)
 
 	// 自位置：每个已连接的移动者
@@ -137,7 +137,21 @@ func (b *ReplicationBuilder) Build(input ReplicationBuildInput, reader Replicati
 		entry.CollectibleIDsCollected = append(entry.CollectibleIDsCollected, ids...)
 	}
 
-	return byRecipient
+	// 转换为不可变 job 切片
+	jobs := make([]replicationJob, 0, len(byRecipient))
+	for recipientID, changes := range byRecipient {
+		client, connected := reader.Client(recipientID)
+		if !connected {
+			continue
+		}
+		jobs = append(jobs, replicationJob{
+			recipientID: recipientID,
+			tick:        input.Tick,
+			client:      client,
+			changes:     copyReplicationChanges(*changes),
+		})
+	}
+	return jobs
 }
 
 // getOrCreateRecipient 在广播本地累积 map 中获取或创建接收者条目。

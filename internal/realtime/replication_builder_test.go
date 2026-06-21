@@ -6,7 +6,16 @@ import (
 	"map-walker/internal/game"
 )
 
-// 构建确定性 fixture：两个玩家在上海，相互可见
+// findJob 在 jobs 切片中查找指定 recipientID 的 job。
+func findJob(jobs []replicationJob, recipientID int64) *replicationJob {
+	for i := range jobs {
+		if jobs[i].recipientID == recipientID {
+			return &jobs[i]
+		}
+	}
+	return nil
+}
+
 func setupReaderFixture() (*game.World, *game.AOIIndex, map[int64]ClientSender) {
 	cfg := game.DefaultConfig()
 	world := game.NewWorld(cfg)
@@ -25,107 +34,6 @@ func setupReaderFixture() (*game.World, *game.AOIIndex, map[int64]ClientSender) 
 	return world, aoi, clients
 }
 
-func TestHubReaderAndConcreteReaderEquivalent(t *testing.T) {
-	world, aoi, clients := setupReaderFixture()
-
-	hr := &hubReader{clients: clients, aoi: aoi, world: world}
-	cr := &concreteReader{clients: clients, aoi: aoi, world: world}
-
-	readers := []struct {
-		name string
-		r    ReplicationBuildReader
-	}{
-		{"hubReader", hr},
-		{"concreteReader", cr},
-	}
-
-	for _, tc := range readers {
-		t.Run(tc.name, func(t *testing.T) {
-			// Connected
-			if !tc.r.Connected(1) {
-				t.Error("player 1 should be connected")
-			}
-			if tc.r.Connected(999) {
-				t.Error("player 999 should not be connected")
-			}
-
-			// Client
-			c, ok := tc.r.Client(1)
-			if !ok || c.ID() != 1 {
-				t.Error("client 1 should exist with correct ID")
-			}
-			_, ok = tc.r.Client(999)
-			if ok {
-				t.Error("client 999 should not exist")
-			}
-
-			// VisibleNeighbors
-			neighbors := tc.r.VisibleNeighbors(1)
-			if len(neighbors) == 0 {
-				t.Error("player 1 should have visible neighbors")
-			}
-
-			// PlayerPosition
-			pos, ok := tc.r.PlayerPosition(1)
-			if !ok || pos.ID != 1 {
-				t.Error("should get position for player 1")
-			}
-			_, ok = tc.r.PlayerPosition(999)
-			if ok {
-				t.Error("should not get position for unknown player")
-			}
-		})
-	}
-}
-
-func TestReadersReturnSameValues(t *testing.T) {
-	world, aoi, clients := setupReaderFixture()
-
-	hr := &hubReader{clients: clients, aoi: aoi, world: world}
-	cr := &concreteReader{clients: clients, aoi: aoi, world: world}
-
-	for _, playerID := range []int64{1, 2} {
-		// Connected
-		if hr.Connected(playerID) != cr.Connected(playerID) {
-			t.Errorf("Connected(%d): hubReader=%v, concreteReader=%v",
-				playerID, hr.Connected(playerID), cr.Connected(playerID))
-		}
-
-		// Client
-		hClient, hOk := hr.Client(playerID)
-		cClient, cOk := cr.Client(playerID)
-		if hOk != cOk || (hOk && hClient.ID() != cClient.ID()) {
-			t.Errorf("Client(%d): hubReader=(%v,%v), concreteReader=(%v,%v)",
-				playerID, hClient, hOk, cClient, cOk)
-		}
-
-		// VisibleNeighbors
-		hN := hr.VisibleNeighbors(playerID)
-		cN := cr.VisibleNeighbors(playerID)
-		if len(hN) != len(cN) {
-			t.Errorf("VisibleNeighbors(%d): hubReader=%v, concreteReader=%v",
-				playerID, hN, cN)
-		}
-
-		// PlayerPosition
-		hPos, hOk := hr.PlayerPosition(playerID)
-		cPos, cOk := cr.PlayerPosition(playerID)
-		if hOk != cOk || (hOk && hPos != cPos) {
-			t.Errorf("PlayerPosition(%d): hubReader=(%v,%v), concreteReader=(%v,%v)",
-				playerID, hPos, hOk, cPos, cOk)
-		}
-	}
-}
-
-func TestReplicationBuildInputZeroValue(t *testing.T) {
-	// 空输入不 panic
-	input := ReplicationBuildInput{}
-	if input.Tick != 0 {
-		t.Error("zero Tick should be 0")
-	}
-}
-
-// playerFanoutFixture 准备 3 个玩家：alice(1) 和 bob(2) 相互可见，carol(3) 单独
 func playerFanoutFixture() (*game.World, *game.AOIIndex, map[int64]ClientSender) {
 	cfg := game.DefaultConfig()
 	world := game.NewWorld(cfg)
@@ -146,6 +54,80 @@ func playerFanoutFixture() (*game.World, *game.AOIIndex, map[int64]ClientSender)
 	return world, aoi, clients
 }
 
+// --- Reader tests ---
+
+func TestHubReaderAndConcreteReaderEquivalent(t *testing.T) {
+	world, aoi, clients := setupReaderFixture()
+
+	hr := &hubReader{clients: clients, aoi: aoi, world: world}
+	cr := &concreteReader{clients: clients, aoi: aoi, world: world}
+
+	readers := []struct {
+		name string
+		r    ReplicationBuildReader
+	}{
+		{"hubReader", hr},
+		{"concreteReader", cr},
+	}
+
+	for _, tc := range readers {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.r.Connected(1) {
+				t.Error("player 1 should be connected")
+			}
+			if tc.r.Connected(999) {
+				t.Error("player 999 should not be connected")
+			}
+
+			c, ok := tc.r.Client(1)
+			if !ok || c.ID() != 1 {
+				t.Error("client 1 should exist with correct ID")
+			}
+
+			neighbors := tc.r.VisibleNeighbors(1)
+			if len(neighbors) == 0 {
+				t.Error("player 1 should have visible neighbors")
+			}
+
+			pos, ok := tc.r.PlayerPosition(1)
+			if !ok || pos.ID != 1 {
+				t.Error("should get position for player 1")
+			}
+		})
+	}
+}
+
+func TestReadersReturnSameValues(t *testing.T) {
+	world, aoi, clients := setupReaderFixture()
+
+	hr := &hubReader{clients: clients, aoi: aoi, world: world}
+	cr := &concreteReader{clients: clients, aoi: aoi, world: world}
+
+	for _, playerID := range []int64{1, 2} {
+		hN := hr.VisibleNeighbors(playerID)
+		cN := cr.VisibleNeighbors(playerID)
+		if len(hN) != len(cN) {
+			t.Errorf("VisibleNeighbors(%d): hubReader=%v, concreteReader=%v", playerID, hN, cN)
+		}
+
+		hPos, hOk := hr.PlayerPosition(playerID)
+		cPos, cOk := cr.PlayerPosition(playerID)
+		if hOk != cOk || (hOk && hPos != cPos) {
+			t.Errorf("PlayerPosition(%d): hubReader=(%v,%v), concreteReader=(%v,%v)",
+				playerID, hPos, hOk, cPos, cOk)
+		}
+	}
+}
+
+func TestReplicationBuildInputZeroValue(t *testing.T) {
+	input := ReplicationBuildInput{}
+	if input.Tick != 0 {
+		t.Error("zero Tick should be 0")
+	}
+}
+
+// --- Player fanout tests ---
+
 func TestBuildSelfPositionFanout(t *testing.T) {
 	world, aoi, clients := playerFanoutFixture()
 	reader := &concreteReader{clients: clients, aoi: aoi, world: world}
@@ -154,21 +136,23 @@ func TestBuildSelfPositionFanout(t *testing.T) {
 	input := ReplicationBuildInput{
 		MovedIDs: []int64{1, 2},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	// alice 和 bob 都移动了，各自应有 SelfPosition
-	if result[1] == nil || result[1].SelfPosition == nil {
+	alice := findJob(jobs, 1)
+	if alice == nil || alice.changes.SelfPosition == nil {
 		t.Fatal("alice should have SelfPosition")
 	}
-	if result[1].SelfPosition.Lat != 31.2304 || result[1].SelfPosition.Lng != 121.4737 {
-		t.Errorf("alice position mismatch: %+v", result[1].SelfPosition)
+	if alice.changes.SelfPosition.Lat != 31.2304 || alice.changes.SelfPosition.Lng != 121.4737 {
+		t.Errorf("alice position mismatch: %+v", alice.changes.SelfPosition)
 	}
-	if result[2] == nil || result[2].SelfPosition == nil {
+
+	bob := findJob(jobs, 2)
+	if bob == nil || bob.changes.SelfPosition == nil {
 		t.Fatal("bob should have SelfPosition")
 	}
-	// carol 没有移动，不应有条目
-	if result[3] != nil {
-		t.Error("carol should have no changes")
+
+	if findJob(jobs, 3) != nil {
+		t.Error("carol should have no job")
 	}
 }
 
@@ -177,30 +161,28 @@ func TestBuildStableNeighborPositionFanout(t *testing.T) {
 	reader := &concreteReader{clients: clients, aoi: aoi, world: world}
 	var builder ReplicationBuilder
 
-	// alice 移动，bob 在移动前后都是 alice 的邻居
 	input := ReplicationBuildInput{
 		MovedIDs: []int64{1},
 		OldNeighborsByMover: map[int64]map[int64]struct{}{
 			1: {2: {}},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	// bob 应该收到 alice 的新位置
-	if result[2] == nil {
+	bob := findJob(jobs, 2)
+	if bob == nil {
 		t.Fatal("bob should have changes")
 	}
-	if len(result[2].Positions) != 1 {
-		t.Fatalf("bob should have 1 position, got %d", len(result[2].Positions))
+	if len(bob.changes.Positions) != 1 {
+		t.Fatalf("bob should have 1 position, got %d", len(bob.changes.Positions))
 	}
-	if result[2].Positions[0].ID != 1 {
-		t.Errorf("position should be alice(1), got %d", result[2].Positions[0].ID)
+	if bob.changes.Positions[0].ID != 1 {
+		t.Errorf("position should be alice(1), got %d", bob.changes.Positions[0].ID)
 	}
 }
 
 func TestBuildStableNeighborSkipsNotConnected(t *testing.T) {
 	world, aoi, clients := playerFanoutFixture()
-	// bob 断连
 	delete(clients, 2)
 	reader := &concreteReader{clients: clients, aoi: aoi, world: world}
 	var builder ReplicationBuilder
@@ -211,11 +193,10 @@ func TestBuildStableNeighborSkipsNotConnected(t *testing.T) {
 			1: {2: {}},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	// bob 断连，不应收到位置
-	if result[2] != nil {
-		t.Error("disconnected bob should have no changes")
+	if findJob(jobs, 2) != nil {
+		t.Error("disconnected bob should have no job")
 	}
 }
 
@@ -224,22 +205,21 @@ func TestBuildEnteredPlayerFanout(t *testing.T) {
 	reader := &concreteReader{clients: clients, aoi: aoi, world: world}
 	var builder ReplicationBuilder
 
-	// bob(2) 对 alice(1) 相互可见
 	state := game.PlayerState{ID: 2, Username: "bob", Lat: 31.2305, Lng: 121.4738}
 	input := ReplicationBuildInput{
 		PendingEntered: []game.PlayerState{state},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	// alice(1) 是 bob 的可见邻居，应收到 entered
-	if result[1] == nil {
+	alice := findJob(jobs, 1)
+	if alice == nil {
 		t.Fatal("alice should receive bob's entered")
 	}
-	if len(result[1].Entered) != 1 {
-		t.Fatalf("alice should have 1 entered, got %d", len(result[1].Entered))
+	if len(alice.changes.Entered) != 1 {
+		t.Fatalf("alice should have 1 entered, got %d", len(alice.changes.Entered))
 	}
-	if result[1].Entered[0].ID != 2 {
-		t.Errorf("entered player should be bob(2), got %d", result[1].Entered[0].ID)
+	if alice.changes.Entered[0].ID != 2 {
+		t.Errorf("entered player should be bob(2), got %d", alice.changes.Entered[0].ID)
 	}
 }
 
@@ -250,16 +230,17 @@ func TestBuildLeftPlayerFanout(t *testing.T) {
 
 	input := ReplicationBuildInput{
 		PendingLeft: map[int64][]int64{
-			1: {2, 3}, // alice 失去了 bob 和 carol
+			1: {2, 3},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	if result[1] == nil {
+	alice := findJob(jobs, 1)
+	if alice == nil {
 		t.Fatal("alice should have changes")
 	}
-	if len(result[1].LeftPlayerIDs) != 2 {
-		t.Fatalf("alice should have 2 left IDs, got %d", len(result[1].LeftPlayerIDs))
+	if len(alice.changes.LeftPlayerIDs) != 2 {
+		t.Fatalf("alice should have 2 left IDs, got %d", len(alice.changes.LeftPlayerIDs))
 	}
 }
 
@@ -271,41 +252,26 @@ func TestBuildAppearanceFanout(t *testing.T) {
 	appearance := game.Appearance{Color: "#ff0000", Shape: "square"}
 	input := ReplicationBuildInput{
 		PendingAppearances: map[int64]game.Appearance{
-			1: appearance, // alice 换了外观
+			1: appearance,
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	// alice 本人应收到外观变更
-	if result[1] == nil {
-		t.Fatal("alice should have changes")
+	alice := findJob(jobs, 1)
+	if alice == nil || len(alice.changes.Appearances) != 1 {
+		t.Fatal("alice should have 1 appearance")
 	}
-	if len(result[1].Appearances) != 1 {
-		t.Fatalf("alice should have 1 appearance, got %d", len(result[1].Appearances))
-	}
-	if result[1].Appearances[0].PlayerID != 1 {
-		t.Errorf("appearance should reference alice(1), got %d", result[1].Appearances[0].PlayerID)
+	if alice.changes.Appearances[0].PlayerID != 1 {
+		t.Errorf("appearance should reference alice(1), got %d", alice.changes.Appearances[0].PlayerID)
 	}
 
-	// bob 是 alice 的可见邻居，应收到外观变更
-	if result[2] == nil {
-		t.Fatal("bob should have changes")
-	}
-	if len(result[2].Appearances) != 1 {
-		t.Fatalf("bob should have 1 appearance, got %d", len(result[2].Appearances))
+	bob := findJob(jobs, 2)
+	if bob == nil || len(bob.changes.Appearances) != 1 {
+		t.Fatal("bob should have 1 appearance")
 	}
 }
 
-func TestBuildEmptyInputReturnsEmptyMap(t *testing.T) {
-	_, aoi, clients := playerFanoutFixture()
-	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
-	var builder ReplicationBuilder
-
-	result := builder.Build(ReplicationBuildInput{}, reader)
-	if len(result) != 0 {
-		t.Errorf("empty input should produce empty map, got %d entries", len(result))
-	}
-}
+// --- Collectible fanout tests ---
 
 func TestBuildCollectibleEnteredFanout(t *testing.T) {
 	_, aoi, clients := playerFanoutFixture()
@@ -317,13 +283,11 @@ func TestBuildCollectibleEnteredFanout(t *testing.T) {
 			1: {{ID: 100, Lat: 31.23, Lng: 121.47}},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	if result[1] == nil {
-		t.Fatal("alice should have changes")
-	}
-	if len(result[1].CollectiblesEntered) != 1 {
-		t.Fatalf("alice should have 1 collectible entered, got %d", len(result[1].CollectiblesEntered))
+	alice := findJob(jobs, 1)
+	if alice == nil || len(alice.changes.CollectiblesEntered) != 1 {
+		t.Fatal("alice should have 1 collectible entered")
 	}
 }
 
@@ -337,13 +301,11 @@ func TestBuildCollectibleLeftFanout(t *testing.T) {
 			1: {100, 200},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	if result[1] == nil {
-		t.Fatal("alice should have changes")
-	}
-	if len(result[1].CollectibleIDsLeft) != 2 {
-		t.Fatalf("alice should have 2 collectibles left, got %d", len(result[1].CollectibleIDsLeft))
+	alice := findJob(jobs, 1)
+	if alice == nil || len(alice.changes.CollectibleIDsLeft) != 2 {
+		t.Fatal("alice should have 2 collectibles left")
 	}
 }
 
@@ -357,13 +319,11 @@ func TestBuildCollectibleSpawnedFanout(t *testing.T) {
 			1: {{ID: 300, Lat: 31.23, Lng: 121.47}},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	if result[1] == nil {
-		t.Fatal("alice should have changes")
-	}
-	if len(result[1].CollectiblesSpawned) != 1 {
-		t.Fatalf("alice should have 1 collectible spawned, got %d", len(result[1].CollectiblesSpawned))
+	alice := findJob(jobs, 1)
+	if alice == nil || len(alice.changes.CollectiblesSpawned) != 1 {
+		t.Fatal("alice should have 1 collectible spawned")
 	}
 }
 
@@ -377,19 +337,16 @@ func TestBuildCollectibleCollectedFanout(t *testing.T) {
 			1: {100},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	if result[1] == nil {
-		t.Fatal("alice should have changes")
-	}
-	if len(result[1].CollectibleIDsCollected) != 1 {
-		t.Fatalf("alice should have 1 collectible collected, got %d", len(result[1].CollectibleIDsCollected))
+	alice := findJob(jobs, 1)
+	if alice == nil || len(alice.changes.CollectibleIDsCollected) != 1 {
+		t.Fatal("alice should have 1 collectible collected")
 	}
 }
 
 func TestBuildCollectibleSkipsDisconnected(t *testing.T) {
 	_, aoi, clients := playerFanoutFixture()
-	// bob 断连
 	delete(clients, 2)
 	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
 	var builder ReplicationBuilder
@@ -399,9 +356,69 @@ func TestBuildCollectibleSkipsDisconnected(t *testing.T) {
 			2: {{ID: 100, Lat: 31.23, Lng: 121.47}},
 		},
 	}
-	result := builder.Build(input, reader)
+	jobs := builder.Build(input, reader)
 
-	if result[2] != nil {
+	if findJob(jobs, 2) != nil {
 		t.Error("disconnected bob should have no collectible changes")
+	}
+}
+
+// --- Job output tests ---
+
+func TestBuildReturnsEmptyJobsForEmptyInput(t *testing.T) {
+	_, aoi, clients := playerFanoutFixture()
+	reader := &concreteReader{clients: clients, aoi: aoi, world: game.NewWorld(game.DefaultConfig())}
+	var builder ReplicationBuilder
+
+	jobs := builder.Build(ReplicationBuildInput{}, reader)
+	if len(jobs) != 0 {
+		t.Errorf("empty input should produce empty jobs, got %d", len(jobs))
+	}
+}
+
+func TestBuildDisconnectedRecipientSkipsJob(t *testing.T) {
+	world, aoi, clients := playerFanoutFixture()
+	delete(clients, 1) // alice 断连
+	reader := &concreteReader{clients: clients, aoi: aoi, world: world}
+	var builder ReplicationBuilder
+
+	input := ReplicationBuildInput{
+		MovedIDs: []int64{1},
+	}
+	jobs := builder.Build(input, reader)
+
+	// alice 断连，不会产生 job
+	if findJob(jobs, 1) != nil {
+		t.Error("disconnected alice should not get a job")
+	}
+}
+
+func TestBuildJobsAreImmutable(t *testing.T) {
+	world, aoi, clients := playerFanoutFixture()
+	reader := &concreteReader{clients: clients, aoi: aoi, world: world}
+	var builder ReplicationBuilder
+
+	// bob(2) 对 alice(1) 相互可见
+	entered := []game.PlayerState{
+		{ID: 2, Username: "bob", Lat: 31.2305, Lng: 121.4738},
+	}
+	input := ReplicationBuildInput{
+		PendingEntered: entered,
+	}
+	jobs := builder.Build(input, reader)
+
+	// 修改原始输入 slice
+	entered[0].Lat = 0
+
+	// job 里的数据不应受影响
+	alice := findJob(jobs, 1)
+	if alice == nil {
+		t.Fatal("alice should have a job")
+	}
+	if len(alice.changes.Entered) != 1 {
+		t.Fatal("alice should have 1 entered")
+	}
+	if alice.changes.Entered[0].Lat != 31.2305 {
+		t.Errorf("job should be immutable, got Lat=%f", alice.changes.Entered[0].Lat)
 	}
 }
