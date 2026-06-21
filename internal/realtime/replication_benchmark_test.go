@@ -189,3 +189,70 @@ func benchDrainAllDirect(clients []*testClient) (msgCount int, byteCount int) {
 	}
 	return
 }
+
+// BenchmarkReplicationDispatcher 独立测量 dispatcher encode/send 吞吐量，
+// 不依赖 Hub 或 AOI，用于校准 worker 数和队列大小。
+func BenchmarkReplicationDispatcher(b *testing.B) {
+	for _, workerCount := range []int{2, 4, 8} {
+		b.Run(fmt.Sprintf("workers-%d", workerCount), func(b *testing.B) {
+			benchDispatcher(b, workerCount)
+		})
+	}
+}
+
+func benchDispatcher(b *testing.B, workerCount int) {
+	const numClients = 1000
+	queueSize := numClients/workerCount + 128 // 队列容量适配 worker 数
+
+	d := NewReplicationDispatcher(workerCount, queueSize, nil)
+	defer d.Stop()
+
+	baseChanges := ReplicationChanges{
+		SelfPosition: &SelfPosition{Lat: 31.2304, Lng: 121.4737},
+		Positions: []game.PlayerPosition{
+			{ID: 2001, Lat: 31.2305, Lng: 121.4738},
+			{ID: 2002, Lat: 31.2306, Lng: 121.4739},
+		},
+		Entered:          []game.PlayerState{{ID: 3001, Username: "new", Lat: 31.2310, Lng: 121.4740}},
+		LeftPlayerIDs:    []int64{4001},
+		CollectibleIDsLeft: []uint64{1, 2},
+	}
+
+	clients := make([]*testClient, numClients)
+	for i := 0; i < numClients; i++ {
+		clients[i] = NewTestClient(int64(i+1), benchClientBuffer)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		b.StopTimer()
+		for i := 0; i < numClients; i++ {
+			clients[i].drainAll()
+		}
+		dropBefore := d.Dropped.Load()
+		b.StartTimer()
+
+		for i := 0; i < numClients; i++ {
+			cp := copyReplicationChanges(baseChanges)
+			d.Submit(replicationJob{
+				recipientID: int64(i + 1),
+				tick:        42,
+				client:      clients[i],
+				changes:     cp,
+			})
+		}
+
+		d.WaitIdle()
+
+		msgs, bytes := benchDrainAllDirect(clients)
+		drops := d.Dropped.Load() - dropBefore
+
+		b.ReportMetric(float64(numClients), "jobs/op")
+		b.ReportMetric(float64(msgs), "msgs/op")
+		b.ReportMetric(float64(bytes), "bytes/op")
+		b.ReportMetric(float64(drops), "dropped/op")
+		b.ReportMetric(float64(workerCount), "workers")
+	}
+}

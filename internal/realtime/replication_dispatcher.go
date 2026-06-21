@@ -112,10 +112,12 @@ func (d *ReplicationDispatcher) runWorker(jobs chan replicationJob) {
 		data, ok, err := TryEncodeReplicationUpdate(job.tick, job.recipientID, job.changes)
 		if err != nil {
 			d.EncodeErrors.Add(1)
+			d.inFlight.Add(-1)
 			continue
 		}
 		if !ok {
 			d.SkippedEmpty.Add(1)
+			d.inFlight.Add(-1)
 			continue
 		}
 		d.Encoded.Add(1)
