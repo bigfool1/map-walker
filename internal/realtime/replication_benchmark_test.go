@@ -108,6 +108,12 @@ func benchHubReplication(b *testing.B, numClients int) {
 		stats := hub.aoi.TakeStats()
 		msgs, bytes := benchDrainAllDirect(clients)
 
+		// 报告内部计时分解
+		b.ReportMetric(float64(hub.stats.aoiDetailedMoveDuration)/1000, "aoi_move_us/op")
+		b.ReportMetric(float64(hub.stats.collectibleRecalcDuration)/1000, "collect_recalc_us/op")
+		hub.stats.aoiDetailedMoveDuration = 0
+		hub.stats.collectibleRecalcDuration = 0
+
 		b.ReportMetric(float64(msgs), "msgs/op")
 		b.ReportMetric(float64(bytes), "bytes/op")
 		b.ReportMetric(float64(moveCount), "moved/op")
