@@ -861,8 +861,7 @@ func (h *Hub) broadcastReplication() {
 	movedIDs := h.world.TakeMovedPlayerIDs()
 	h.world.TakeRemovedPlayerIDs()
 
-	oldNeighborsByMover := h.snapshotMoverVisibility(movedIDs)
-	h.applyMovementAOIChanges(movedIDs)
+	movementDeltas := h.applyMovementAOIDeltas(movedIDs)
 	h.stats.movedPlayers += uint64(len(movedIDs))
 
 	pendingEntered := h.takePendingEntered()
@@ -886,21 +885,6 @@ func (h *Hub) broadcastReplication() {
 	}
 
 	tick := h.world.Tick()
-
-	// 从旧可见邻居快照构造 MovementDeltas（暂时，Task 3 将替换为 applyMovementAOIDeltas）
-	movementDeltas := make([]game.MovementDelta, 0, len(movedIDs))
-	for _, moverID := range movedIDs {
-		oldSet := oldNeighborsByMover[moverID]
-		stable := make([]int64, 0, len(oldSet))
-		for nid := range oldSet {
-			stable = append(stable, nid)
-		}
-		movementDeltas = append(movementDeltas, game.MovementDelta{
-			PlayerID: moverID,
-			Stable:   stable,
-		})
-	}
-
 	input := ReplicationBuildInput{
 		Tick:                tick,
 		MovementDeltas:      movementDeltas,
@@ -930,43 +914,20 @@ func (h *Hub) broadcastReplication() {
 	}
 }
 
-// snapshotMoverVisibility 只为移动者捕获旧可见邻居集，不再复制全部已连接客户端。
-func (h *Hub) snapshotMoverVisibility(movedIDs []int64) map[int64]map[int64]struct{} {
-	snapshot := make(map[int64]map[int64]struct{}, len(movedIDs))
-	for _, playerID := range movedIDs {
-		neighbors := h.aoi.VisibleNeighbors(playerID)
-		set := make(map[int64]struct{}, len(neighbors))
-		for _, neighborID := range neighbors {
-			set[neighborID] = struct{}{}
-		}
-		snapshot[playerID] = set
-	}
-	return snapshot
-}
-
-// moverHadNeighbor 检查 observerID 在 mover 移动前是否在 mover 的可见邻居集中。
-// 利用 AOI 对称性：旧可见集 key=clientID 含 playerID ⇔ key=playerID 含 clientID。
-func (h *Hub) moverHadNeighbor(oldNeighborsByMover map[int64]map[int64]struct{}, moverID, observerID int64) bool {
-	neighbors, ok := oldNeighborsByMover[moverID]
-	if !ok {
-		return false
-	}
-	_, visible := neighbors[observerID]
-	return visible
-}
-
-func (h *Hub) applyMovementAOIChanges(movedIDs []int64) {
+// applyMovementAOIDeltas 更新 AOI 位置，收集 entered/left event，返回 movement deltas。
+func (h *Hub) applyMovementAOIDeltas(movedIDs []int64) []game.MovementDelta {
+	deltas := make([]game.MovementDelta, 0, len(movedIDs))
 	for _, playerID := range movedIDs {
 		position, ok := h.world.PlayerPosition(playerID)
 		if !ok {
 			continue
 		}
-		changes := h.aoi.Move(playerID, position.Lat, position.Lng)
+		delta := h.aoi.MoveDetailed(playerID, position.Lat, position.Lng)
 		state, ok := h.world.PlayerState(playerID)
 		if !ok {
 			continue
 		}
-		for _, neighborID := range changes.Entered {
+		for _, neighborID := range delta.Entered {
 			if _, connected := h.clients[neighborID]; !connected {
 				continue
 			}
@@ -974,13 +935,15 @@ func (h *Hub) applyMovementAOIChanges(movedIDs []int64) {
 				h.pendingEntered[playerID] = state
 			}
 		}
-		for _, neighborID := range changes.Left {
+		for _, neighborID := range delta.Left {
 			if _, connected := h.clients[neighborID]; !connected {
 				continue
 			}
 			h.pendingLeft[neighborID] = append(h.pendingLeft[neighborID], playerID)
 		}
+		deltas = append(deltas, delta)
 	}
+	return deltas
 }
 
 func (h *Hub) takePendingLeft() map[int64][]int64 {
