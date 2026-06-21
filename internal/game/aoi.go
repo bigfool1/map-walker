@@ -38,6 +38,16 @@ type RelationshipChanges struct {
 	Left    []int64
 }
 
+// MovementDelta 描述一次移动的 AOI 关系变化。
+// Entered 和 Left 与 RelationshipChanges 含义一致。
+// Stable 包含移动前后都可见的邻居，用于位置扇出。
+type MovementDelta struct {
+	PlayerID int64
+	Entered  []int64
+	Left     []int64
+	Stable   []int64
+}
+
 type AOIStats struct {
 	CandidatePairs       uint64
 	DistanceChecks       uint64
@@ -142,11 +152,45 @@ func (a *AOIIndex) Insert(playerID int64, lat, lng float64) RelationshipChanges 
 }
 
 func (a *AOIIndex) Move(playerID int64, lat, lng float64) RelationshipChanges {
-	if _, exists := a.players[playerID]; !exists {
-		return RelationshipChanges{}
+	delta := a.MoveDetailed(playerID, lat, lng)
+	return RelationshipChanges{Entered: delta.Entered, Left: delta.Left}
+}
+
+// MoveDetailed 返回移动的完整关系变化，包含 stable 邻居。
+func (a *AOIIndex) MoveDetailed(playerID int64, lat, lng float64) MovementDelta {
+	_, exists := a.players[playerID]
+	if !exists {
+		return MovementDelta{PlayerID: playerID}
 	}
+
+	// 在位置更新前捕获旧可见邻居
+	oldVisible := a.visible[playerID]
+	oldNeighborIDs := make([]int64, 0, len(oldVisible))
+	for nid := range oldVisible {
+		oldNeighborIDs = append(oldNeighborIDs, nid)
+	}
+
 	a.setPosition(playerID, lat, lng)
-	return a.recalculateRelationships(playerID)
+	changes := a.recalculateRelationships(playerID)
+
+	// stable = 旧邻居中未离开的
+	leftSet := make(map[int64]struct{}, len(changes.Left))
+	for _, id := range changes.Left {
+		leftSet[id] = struct{}{}
+	}
+	stable := make([]int64, 0, len(oldNeighborIDs))
+	for _, id := range oldNeighborIDs {
+		if _, isLeft := leftSet[id]; !isLeft {
+			stable = append(stable, id)
+		}
+	}
+
+	return MovementDelta{
+		PlayerID: playerID,
+		Entered:  changes.Entered,
+		Left:     changes.Left,
+		Stable:   stable,
+	}
 }
 
 func (a *AOIIndex) RecalculateRelationships(playerID int64) RelationshipChanges {

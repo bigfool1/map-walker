@@ -427,6 +427,181 @@ func contains(values []int64, target int64) bool {
 	return false
 }
 
+func TestMoveDetailedUnknownPlayerReturnsEmpty(t *testing.T) {
+	aoi := newTestAOI()
+	lat, lng := localLatLng(aoi.config, 0, 0)
+	delta := aoi.MoveDetailed(9999, lat, lng) // 从未插入的玩家
+
+	if delta.PlayerID != 9999 {
+		t.Fatalf("PlayerID = %d, want 9999", delta.PlayerID)
+	}
+	if delta.Entered != nil {
+		t.Fatalf("Entered = %v, want nil", delta.Entered)
+	}
+	if delta.Left != nil {
+		t.Fatalf("Left = %v, want nil", delta.Left)
+	}
+	if delta.Stable != nil {
+		t.Fatalf("Stable = %v, want nil", delta.Stable)
+	}
+}
+
+func TestMoveDetailedEnteredLeftMatchMove(t *testing.T) {
+	aoi := newTestAOI()
+	const alice, bob int64 = 1001, 1002
+
+	// alice 在原点，bob 在 400m 处（可见范围内）
+	aliceLat, aliceLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(alice, aliceLat, aliceLng)
+	bobLat, bobLng := localLatLng(aoi.config, 0, 400)
+	changes := aoi.Insert(bob, bobLat, bobLng)
+
+	if !sliceSetEqual(changes.Entered, []int64{alice}) {
+		t.Fatalf("insert entered = %v, want [alice]", changes.Entered)
+	}
+
+	// bob 小幅度移动，用 Move 和 MoveDetailed 分别验证
+	aliceLat2, aliceLng2 := localLatLng(aoi.config, 0, 0)
+	aliceLat2, aliceLng2 = localLatLng(aoi.config, 100, 0)
+
+	// 先 Move 作为参考
+	moveChanges := aoi.Move(alice, aliceLat2, aliceLng2)
+	// 重置 alice 位置后用 MoveDetailed
+	aliceLat1, aliceLng1 := localLatLng(aoi.config, 0, 0)
+	aoi.Move(alice, aliceLat1, aliceLng1) // 移回去
+	delta := aoi.MoveDetailed(alice, aliceLat2, aliceLng2)
+
+	if !sliceSetEqual(delta.Entered, moveChanges.Entered) {
+		t.Fatalf("MoveDetailed.Entered = %v, Move.Entered = %v", delta.Entered, moveChanges.Entered)
+	}
+	if !sliceSetEqual(delta.Left, moveChanges.Left) {
+		t.Fatalf("MoveDetailed.Left = %v, Move.Left = %v", delta.Left, moveChanges.Left)
+	}
+	if delta.PlayerID != alice {
+		t.Fatalf("PlayerID = %d, want %d", delta.PlayerID, alice)
+	}
+}
+
+func TestMoveDetailedStableContainsOldStillVisible(t *testing.T) {
+	aoi := newTestAOI()
+	const alice, bob, carol int64 = 1001, 1002, 1003
+
+	aliceLat, aliceLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(alice, aliceLat, aliceLng)
+	bobLat, bobLng := localLatLng(aoi.config, 0, 400)
+	aoi.Insert(bob, bobLat, bobLng)
+	carolLat, carolLng := localLatLng(aoi.config, 0, 800)
+	aoi.Insert(carol, carolLat, carolLng)
+
+	// carol 在 800m — 超出 500m enter 和 600m leave，alice 看不到她
+	// alice 只看到 bob
+	if !contains(aoi.VisibleNeighbors(alice), bob) {
+		t.Fatal("alice should see bob")
+	}
+	if contains(aoi.VisibleNeighbors(alice), carol) {
+		t.Fatal("alice should not see carol")
+	}
+
+	// alice 移动 50m，bob 仍在可见范围，carol 仍不可见
+	newLat, newLng := localLatLng(aoi.config, 0, 50)
+	delta := aoi.MoveDetailed(alice, newLat, newLng)
+
+	if !contains(delta.Stable, bob) {
+		t.Fatalf("Stable should contain bob: %v", delta.Stable)
+	}
+	if contains(delta.Stable, carol) {
+		t.Fatalf("Stable should not contain carol (was never visible): %v", delta.Stable)
+	}
+	if len(delta.Entered) != 0 {
+		t.Fatalf("Entered = %v, want empty", delta.Entered)
+	}
+	if len(delta.Left) != 0 {
+		t.Fatalf("Left = %v, want empty", delta.Left)
+	}
+}
+
+func TestMoveDetailedStableExcludesEntered(t *testing.T) {
+	aoi := newTestAOI()
+	const alice, bob int64 = 1001, 1002
+
+	// alice 在原点，bob 在 800m（不可见）
+	aliceLat, aliceLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(alice, aliceLat, aliceLng)
+	bobLat, bobLng := localLatLng(aoi.config, 0, 800)
+	aoi.Insert(bob, bobLat, bobLng)
+
+	if len(aoi.VisibleNeighbors(alice)) != 0 {
+		t.Fatal("alice should see nobody initially")
+	}
+
+	// bob 移动到 400m，alice 对 bob 来说是 newly entered
+	newLat, newLng := localLatLng(aoi.config, 0, 400)
+	delta := aoi.MoveDetailed(bob, newLat, newLng)
+
+	if !sliceSetEqual(delta.Entered, []int64{alice}) {
+		t.Fatalf("Entered = %v, want [alice]", delta.Entered)
+	}
+	if contains(delta.Stable, alice) {
+		t.Fatalf("Stable should not contain alice (newly entered): %v", delta.Stable)
+	}
+}
+
+func TestMoveDetailedStableExcludesLeft(t *testing.T) {
+	aoi := newTestAOI()
+	const alice, bob int64 = 1001, 1002
+
+	aliceLat, aliceLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(alice, aliceLat, aliceLng)
+	bobLat, bobLng := localLatLng(aoi.config, 0, 400)
+	aoi.Insert(bob, bobLat, bobLng)
+
+	if !contains(aoi.VisibleNeighbors(alice), bob) {
+		t.Fatal("alice should see bob initially")
+	}
+
+	// bob 移动到 700m — 超出 600m leave 半径
+	newLat, newLng := localLatLng(aoi.config, 0, 700)
+	delta := aoi.MoveDetailed(bob, newLat, newLng)
+
+	if !sliceSetEqual(delta.Left, []int64{alice}) {
+		t.Fatalf("Left = %v, want [alice]", delta.Left)
+	}
+	if contains(delta.Stable, alice) {
+		t.Fatalf("Stable should not contain alice (left): %v", delta.Stable)
+	}
+	if len(delta.Entered) != 0 {
+		t.Fatalf("Entered = %v, want empty", delta.Entered)
+	}
+}
+
+func TestMoveDetailedNoCellChangeAllStable(t *testing.T) {
+	aoi := newTestAOI()
+	const alice, bob int64 = 1001, 1002
+
+	aliceLat, aliceLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(alice, aliceLat, aliceLng)
+	bobLat, bobLng := localLatLng(aoi.config, 0, 400)
+	aoi.Insert(bob, bobLat, bobLng)
+
+	if !contains(aoi.VisibleNeighbors(alice), bob) {
+		t.Fatal("alice should see bob")
+	}
+
+	// alice 在同 cell 内微移
+	newLat, newLng := localLatLng(aoi.config, 10, 10)
+	delta := aoi.MoveDetailed(alice, newLat, newLng)
+
+	if !contains(delta.Stable, bob) {
+		t.Fatalf("Stable should contain bob: %v", delta.Stable)
+	}
+	if len(delta.Entered) != 0 {
+		t.Fatalf("Entered = %v, want empty", delta.Entered)
+	}
+	if len(delta.Left) != 0 {
+		t.Fatalf("Left = %v, want empty", delta.Left)
+	}
+}
+
 func TestAOIDistanceUsesSquaredEuclideanMeters(t *testing.T) {
 	aoi := newTestAOI()
 	const a, b int64 = 9001, 9002
