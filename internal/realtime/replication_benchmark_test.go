@@ -79,10 +79,12 @@ func benchHubReplication(b *testing.B, numClients int) {
 		warmupSeq = benchDirectApplyInputs(hub, clients, moveCount, warmupSeq, 1.0)
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
+		hub.dispatcher.WaitIdle()
 		benchDrainAllDirect(clients)
 		warmupSeq = benchDirectApplyInputs(hub, clients, moveCount, warmupSeq, -1.0)
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
+		hub.dispatcher.WaitIdle()
 		benchDrainAllDirect(clients)
 	}
 
@@ -101,6 +103,7 @@ func benchHubReplication(b *testing.B, numClients int) {
 
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
+		hub.dispatcher.WaitIdle()
 
 		stats := hub.aoi.TakeStats()
 		msgs, bytes := benchDrainAllDirect(clients)

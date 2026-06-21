@@ -228,7 +228,7 @@ func newHub(
 	if n > 8 {
 		n = 8
 	}
-	h.dispatcher = NewReplicationDispatcher(n, 64, func(recipientID int64) {
+	h.dispatcher = NewReplicationDispatcher(n, 512, func(recipientID int64) {
 		h.DisconnectUser(recipientID)
 	})
 
@@ -988,28 +988,19 @@ func (h *Hub) broadcastReplication() {
 		entry.CollectibleIDsCollected = append(entry.CollectibleIDsCollected, ids...)
 	}
 
-	// 编码并只发送给累积了变更的接收者
+	// 提交 encode/send 到 dispatcher（异步，不阻塞广播 tick）
 	for recipientID, changes := range byRecipient {
 		client, connected := h.clients[recipientID]
 		if !connected {
 			continue
 		}
-		data, ok, err := TryEncodeReplicationUpdate(tick, recipientID, *changes)
-		if err != nil {
-			log.Printf("encode replication update failed: %v", err)
-			continue
-		}
-		if !ok {
-			continue
-		}
-
-		h.stats.replicationMessages++
 		h.stats.replicationRecipients++
-		h.stats.replicationBytes += uint64(len(data))
-
-		if sendOK := client.Send(data); !sendOK {
-			h.removeClient(client)
-		}
+		h.dispatcher.Submit(replicationJob{
+			recipientID: recipientID,
+			tick:        tick,
+			client:      client,
+			changes:     copyReplicationChanges(*changes),
+		})
 	}
 }
 
@@ -1135,13 +1126,16 @@ func (h *Hub) logStats() {
 		ReplicationBytes:      h.stats.replicationBytes,
 		SampledAt:             time.Now(),
 	}
-	if h.dispatcher != nil {
-		snap.Dispatcher = h.dispatcher.Stats()
-	}
+	// 从 dispatcher 读取编码/字节统计（替换旧的 actor 内联统计）
+	ds := h.dispatcher.Stats()
+	snap.Dispatcher = ds
+	snap.ReplicationMessages = ds.Encoded
+	snap.ReplicationBytes = ds.EncodedBytes
+
 	h.snapshot.Store(snap)
 
 	log.Printf(
-		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d",
+		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d replication_messages=%d replication_recipients=%d replication_bytes=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d",
 		snap.ConnectedClients,
 		snap.AcceptedInputs,
 		snap.SimulationTicks,
@@ -1153,6 +1147,15 @@ func (h *Hub) logStats() {
 		snap.ReplicationMessages,
 		snap.ReplicationRecipients,
 		snap.ReplicationBytes,
+		ds.Submitted,
+		ds.Encoded,
+		ds.SkippedEmpty,
+		ds.EncodeErrors,
+		ds.Dropped,
+		ds.SendFailures,
+		ds.QueueDepth,
+		ds.WorkerCount,
+		ds.EncodedBytes,
 	)
 	h.stats = intervalStats{}
 }

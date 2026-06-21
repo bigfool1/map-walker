@@ -83,6 +83,7 @@ type ReplicationDispatcher struct {
 	EncodeErrors atomic.Int64
 	SendFailures atomic.Int64
 	EncodedBytes atomic.Int64
+	inFlight     atomic.Int64
 
 	onSendFailure func(recipientID int64)
 	wg            sync.WaitGroup
@@ -125,6 +126,7 @@ func (d *ReplicationDispatcher) runWorker(jobs chan replicationJob) {
 				d.onSendFailure(job.recipientID)
 			}
 		}
+		d.inFlight.Add(-1)
 	}
 }
 
@@ -136,6 +138,7 @@ func (d *ReplicationDispatcher) Submit(job replicationJob) bool {
 		return false
 	}
 	d.Submitted.Add(1)
+	d.inFlight.Add(1)
 	idx := int(job.recipientID) % d.workerCount
 	if idx < 0 {
 		idx = -idx
@@ -145,6 +148,7 @@ func (d *ReplicationDispatcher) Submit(job replicationJob) bool {
 		return true
 	default:
 		d.Dropped.Add(1)
+		d.inFlight.Add(-1)
 		return false
 	}
 }
@@ -158,6 +162,12 @@ func (d *ReplicationDispatcher) Stop() {
 		close(ch)
 	}
 	d.wg.Wait()
+}
+
+// WaitIdle 忙等待直到所有已提交的 job 处理完毕。仅用于 benchmark/test 同步。
+func (d *ReplicationDispatcher) WaitIdle() {
+	for d.inFlight.Load() > 0 {
+	}
 }
 
 // Stats 返回当前统计快照。可从任意 goroutine 安全调用。
