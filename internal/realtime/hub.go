@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"log"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -182,7 +183,7 @@ func newHub(
 	statsTick <-chan time.Time,
 	stopTickers func(),
 ) *Hub {
-	return &Hub{
+	h := &Hub{
 		world:              world,
 		aoi:                game.NewAOIIndex(game.AOIConfigFromWorld(world.Config())),
 		loadSavedPlayer:    loadSavedPlayer,
@@ -218,6 +219,20 @@ func newHub(
 		statsTick:          statsTick,
 		stopTickers:        stopTickers,
 	}
+
+	// dispatcher 将 per-recipient 编码/发送卸载到 worker goroutine
+	n := runtime.GOMAXPROCS(0) / 2
+	if n < 2 {
+		n = 2
+	}
+	if n > 8 {
+		n = 8
+	}
+	h.dispatcher = NewReplicationDispatcher(n, 64, func(recipientID int64) {
+		h.DisconnectUser(recipientID)
+	})
+
+	return h
 }
 
 // Run is the single owner of both connections and authoritative world state.
@@ -263,6 +278,7 @@ func (h *Hub) Run() {
 		case req := <-h.leaderboards:
 			req.reply <- h.buildLeaderboard(req.requesterID)
 		case <-h.stop:
+			h.dispatcher.Stop()
 			for _, client := range h.clients {
 				h.submitFinalPosition(client.ID())
 			}

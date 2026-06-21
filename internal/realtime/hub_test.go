@@ -1963,6 +1963,45 @@ func TestHubSnapshotDispatcherStats(t *testing.T) {
 	}
 }
 
+func TestHubDispatcherSendFailureDisconnectsClient(t *testing.T) {
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, make(chan time.Time, 8))
+	go hub.Run()
+	defer hub.Stop()
+
+	// 注册时用 testClient，保证初始化成功
+	tc := NewTestClient(1, 8)
+	hub.Register(tc)
+	mustReceiveInitialization(t, tc)
+
+	// 用 failClient（Send 永远失败）以相同 recipientID 提交 job
+	fc := &failClient{id: 1}
+	changes := ReplicationChanges{
+		Positions: []game.PlayerPosition{{ID: 2001, Lat: 31.1, Lng: 121.1}},
+	}
+	cp := copyReplicationChanges(changes)
+	hub.dispatcher.Submit(replicationJob{recipientID: 1, tick: 1, client: fc, changes: cp})
+
+	// onSendFailure → DisconnectUser(1) → removeClient(tc) → tc.CloseSend()
+	select {
+	case <-tc.done:
+		// client 已被 actor 移除
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for client disconnect after send failure")
+	}
+}
+
+func TestHubStopStopsDispatcher(t *testing.T) {
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, make(chan time.Time, 8))
+	go hub.Run()
+
+	hub.Stop() // 不应 hang
+
+	// dispatcher 停止后 Submit 应失败
+	if hub.dispatcher.Submit(replicationJob{}) {
+		t.Fatal("submit after hub stop should fail")
+	}
+}
+
 func testRegionsForPickup() []game.CollectibleRegion {
 	return []game.CollectibleRegion{
 		{ID: "region-1", CenterLat: 31.2304, CenterLng: 121.4737, RadiusMeters: 5, TargetCount: 1, RespawnMin: 5 * time.Second, RespawnMax: 10 * time.Second},
