@@ -5,9 +5,10 @@ import (
 )
 
 const (
-	defaultCellSizeMeters    = 600
-	defaultEnterRadiusMeters = 500
-	defaultLeaveRadiusMeters = 600
+	defaultCellSizeMeters             = 600
+	defaultEnterRadiusMeters          = 500
+	defaultLeaveRadiusMeters          = 600
+	defaultEnterRescanDistanceMeters  = 50
 )
 
 type CellCoord struct {
@@ -16,20 +17,22 @@ type CellCoord struct {
 }
 
 type AOIConfig struct {
-	OriginLat         float64
-	OriginLng         float64
-	CellSizeMeters    float64
-	EnterRadiusMeters float64
-	LeaveRadiusMeters float64
+	OriginLat                 float64
+	OriginLng                 float64
+	CellSizeMeters            float64
+	EnterRadiusMeters         float64
+	LeaveRadiusMeters         float64
+	EnterRescanDistanceMeters float64
 }
 
 func AOIConfigFromWorld(config Config) AOIConfig {
 	return AOIConfig{
-		OriginLat:         config.SpawnLat,
-		OriginLng:         config.SpawnLng,
-		CellSizeMeters:    defaultCellSizeMeters,
-		EnterRadiusMeters: defaultEnterRadiusMeters,
-		LeaveRadiusMeters: defaultLeaveRadiusMeters,
+		OriginLat:                 config.SpawnLat,
+		OriginLng:                 config.SpawnLng,
+		CellSizeMeters:            defaultCellSizeMeters,
+		EnterRadiusMeters:         defaultEnterRadiusMeters,
+		LeaveRadiusMeters:         defaultLeaveRadiusMeters,
+		EnterRescanDistanceMeters: defaultEnterRescanDistanceMeters,
 	}
 }
 
@@ -53,12 +56,20 @@ type AOIStats struct {
 	DistanceChecks       uint64
 	RelationshipsEntered uint64
 	RelationshipsLeft    uint64
+	FullEnterScans       uint64
+	SkippedEnterScans    uint64
+	LeaveChecks          uint64
+	StableRelationships  uint64
 }
 
 type aoiPlayer struct {
-	lat, lng       float64
-	localX, localY float64
-	cell           CellCoord
+	lat, lng            float64
+	localX, localY      float64
+	cell                CellCoord
+	lastEnterScanX      float64
+	lastEnterScanY      float64
+	lastEnterScanCell   CellCoord
+	hasEnterScanMarker  bool
 }
 
 type AOIIndex struct {
@@ -388,4 +399,8 @@ func (c AOIConfig) enterRadiusSquared() float64 {
 
 func (c AOIConfig) leaveRadiusSquared() float64 {
 	return c.LeaveRadiusMeters * c.LeaveRadiusMeters
+}
+
+func (c AOIConfig) enterRescanDistanceSquared() float64 {
+	return c.EnterRescanDistanceMeters * c.EnterRescanDistanceMeters
 }

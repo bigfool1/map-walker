@@ -616,6 +616,16 @@ func TestAOIDistanceUsesSquaredEuclideanMeters(t *testing.T) {
 	}
 }
 
+func TestAOIConfigDefaultEnterRescanDistance(t *testing.T) {
+	cfg := AOIConfigFromWorld(testConfig())
+	if cfg.EnterRescanDistanceMeters != 50 {
+		t.Fatalf("EnterRescanDistanceMeters = %v, want 50", cfg.EnterRescanDistanceMeters)
+	}
+	if cfg.enterRescanDistanceSquared() != 2500 {
+		t.Fatalf("enterRescanDistanceSquared = %v, want 2500", cfg.enterRescanDistanceSquared())
+	}
+}
+
 func TestAOIVisibleRelationshipPairs(t *testing.T) {
 	aoi := newTestAOI()
 	const alice, bob, carol int64 = 1001, 1002, 1007
