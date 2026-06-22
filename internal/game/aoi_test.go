@@ -626,6 +626,27 @@ func TestAOIConfigDefaultEnterRescanDistance(t *testing.T) {
 	}
 }
 
+func TestAOIRecalculateRelationshipsStatsAccounting(t *testing.T) {
+	aoi := newTestAOI()
+	const a, b, c int64 = 5001, 5002, 5003
+	aLat, aLng := localLatLng(aoi.config, 0, 0)
+	bLat, bLng := localLatLng(aoi.config, 300, 0)
+	cLat, cLng := localLatLng(aoi.config, 800, 0)
+	aoi.Insert(a, aLat, aLng)
+	aoi.Insert(b, bLat, bLng)
+	aoi.Insert(c, cLat, cLng)
+	aoi.TakeStats()
+
+	aoi.RecalculateRelationships(a)
+	stats := aoi.TakeStats()
+	if stats.FullEnterScans != 1 {
+		t.Fatalf("FullEnterScans = %d, want 1", stats.FullEnterScans)
+	}
+	if stats.LeaveChecks == 0 {
+		t.Fatal("LeaveChecks should be > 0 when there are existing visible neighbors")
+	}
+}
+
 func TestAOIVisibleRelationshipPairs(t *testing.T) {
 	aoi := newTestAOI()
 	const alice, bob, carol int64 = 1001, 1002, 1007

@@ -256,15 +256,10 @@ func (a *AOIIndex) setPosition(playerID int64, lat, lng float64) {
 	a.addToCell(playerID, cell)
 }
 
-func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges {
-	self, exists := a.players[playerID]
-	if !exists {
-		return RelationshipChanges{}
-	}
-
+// enterScanNineCells 对 self 所在九格中尚未可见的候选者执行进入半径检查。
+// 返回新进入的邻居 ID。调用方负责递增 FullEnterScans。
+func (a *AOIIndex) enterScanNineCells(self *aoiPlayer, playerID int64) []int64 {
 	entered := make([]int64, 0)
-	left := make([]int64, 0)
-
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
 			for candidateID := range a.cells[CellCoord{X: self.cell.X + dx, Y: self.cell.Y + dy}] {
@@ -283,13 +278,20 @@ func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges 
 			}
 		}
 	}
+	return entered
+}
 
+// leaveCheckExistingNeighbors 检查当前可见邻居是否超出离开半径。
+// 返回离开的邻居 ID。
+func (a *AOIIndex) leaveCheckExistingNeighbors(self *aoiPlayer, playerID int64) []int64 {
+	left := make([]int64, 0)
 	for neighborID := range a.visible[playerID] {
 		neighbor := a.players[neighborID]
 		if neighbor == nil {
 			continue
 		}
 		a.stats.DistanceChecks++
+		a.stats.LeaveChecks++
 		if a.beyondLeaveRadius(self, neighbor) {
 			left = append(left, neighborID)
 		}
@@ -299,11 +301,18 @@ func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges 
 			a.stats.RelationshipsLeft++
 		}
 	}
+	return left
+}
 
-	return RelationshipChanges{
-		Entered: entered,
-		Left:    left,
+func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges {
+	self, exists := a.players[playerID]
+	if !exists {
+		return RelationshipChanges{}
 	}
+	entered := a.enterScanNineCells(self, playerID)
+	a.stats.FullEnterScans++
+	left := a.leaveCheckExistingNeighbors(self, playerID)
+	return RelationshipChanges{Entered: entered, Left: left}
 }
 
 func (a *AOIIndex) IsVisible(playerA, playerB int64) bool {
