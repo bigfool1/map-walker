@@ -168,13 +168,13 @@ func (a *AOIIndex) Move(playerID int64, lat, lng float64) RelationshipChanges {
 }
 
 // MoveDetailed 返回移动的完整关系变化，包含 stable 邻居。
+// 小幅同 cell 移动会跳过九格 enter 扫描以降低开销；leave 检测始终精确执行。
 func (a *AOIIndex) MoveDetailed(playerID int64, lat, lng float64) MovementDelta {
-	_, exists := a.players[playerID]
+	self, exists := a.players[playerID]
 	if !exists {
 		return MovementDelta{PlayerID: playerID}
 	}
 
-	// 在位置更新前捕获旧可见邻居
 	oldVisible := a.visible[playerID]
 	oldNeighborIDs := make([]int64, 0, len(oldVisible))
 	for nid := range oldVisible {
@@ -182,24 +182,36 @@ func (a *AOIIndex) MoveDetailed(playerID int64, lat, lng float64) MovementDelta 
 	}
 
 	a.setPosition(playerID, lat, lng)
-	changes := a.recalculateRelationships(playerID)
+	self = a.players[playerID]
 
-	// stable = 旧邻居中未离开的
-	leftSet := make(map[int64]struct{}, len(changes.Left))
-	for _, id := range changes.Left {
+	left := a.leaveCheckExistingNeighbors(self, playerID)
+
+	var entered []int64
+	if a.shouldForceEnterScan(self) {
+		entered = a.enterScanNineCells(self, playerID)
+		a.stats.FullEnterScans++
+		a.markEnterScan(self)
+	} else {
+		a.stats.SkippedEnterScans++
+	}
+
+	leftSet := make(map[int64]struct{}, len(left))
+	for _, id := range left {
 		leftSet[id] = struct{}{}
 	}
 	stable := make([]int64, 0, len(oldNeighborIDs))
 	for _, id := range oldNeighborIDs {
-		if _, isLeft := leftSet[id]; !isLeft {
-			stable = append(stable, id)
+		if _, isLeft := leftSet[id]; isLeft {
+			continue
 		}
+		stable = append(stable, id)
 	}
+	a.stats.StableRelationships += uint64(len(stable))
 
 	return MovementDelta{
 		PlayerID: playerID,
-		Entered:  changes.Entered,
-		Left:     changes.Left,
+		Entered:  entered,
+		Left:     left,
 		Stable:   stable,
 	}
 }
@@ -304,6 +316,27 @@ func (a *AOIIndex) leaveCheckExistingNeighbors(self *aoiPlayer, playerID int64) 
 	return left
 }
 
+// shouldForceEnterScan 判断是否需要强制 enter 扫描。
+// 条件：无扫描标记、换 cell、或距上次扫描超过阈值。
+func (a *AOIIndex) shouldForceEnterScan(self *aoiPlayer) bool {
+	if !self.hasEnterScanMarker {
+		return true
+	}
+	if self.cell != self.lastEnterScanCell {
+		return true
+	}
+	dx := self.localX - self.lastEnterScanX
+	dy := self.localY - self.lastEnterScanY
+	return dx*dx+dy*dy >= a.config.enterRescanDistanceSquared()
+}
+
+func (a *AOIIndex) markEnterScan(self *aoiPlayer) {
+	self.lastEnterScanX = self.localX
+	self.lastEnterScanY = self.localY
+	self.lastEnterScanCell = self.cell
+	self.hasEnterScanMarker = true
+}
+
 func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges {
 	self, exists := a.players[playerID]
 	if !exists {
@@ -311,6 +344,7 @@ func (a *AOIIndex) recalculateRelationships(playerID int64) RelationshipChanges 
 	}
 	entered := a.enterScanNineCells(self, playerID)
 	a.stats.FullEnterScans++
+	a.markEnterScan(self)
 	left := a.leaveCheckExistingNeighbors(self, playerID)
 	return RelationshipChanges{Entered: entered, Left: left}
 }

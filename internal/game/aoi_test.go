@@ -427,6 +427,147 @@ func contains(values []int64, target int64) bool {
 	return false
 }
 
+func sliceContains(s []int64, v int64) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAOIMoveDetailedSkipsEnterScanForSmallSameCellMove(t *testing.T) {
+	aoi := newTestAOI()
+	const mover, neighbor int64 = 6001, 6002
+	moverLat, moverLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(mover, moverLat, moverLng)
+	// 邻居在 450m：Insert 将其拉入互见（< 500m）。
+	// 直接移除关系，证明小幅移动不会因跳过扫描而重新发现邻居。
+	neighborLat, neighborLng := localLatLng(aoi.config, 450, 0)
+	aoi.Insert(neighbor, neighborLat, neighborLng)
+	aoi.removeRelationship(mover, neighbor)
+	aoi.TakeStats()
+
+	smallLat, smallLng := localLatLng(aoi.config, 10, 0)
+	delta := aoi.MoveDetailed(mover, smallLat, smallLng)
+
+	if len(delta.Entered) != 0 {
+		t.Fatalf("Entered = %v, want empty (small same-cell move should skip enter scan)", delta.Entered)
+	}
+	stats := aoi.TakeStats()
+	if stats.SkippedEnterScans != 1 {
+		t.Fatalf("SkippedEnterScans = %d, want 1", stats.SkippedEnterScans)
+	}
+	if stats.FullEnterScans != 0 {
+		t.Fatalf("FullEnterScans = %d, want 0", stats.FullEnterScans)
+	}
+}
+
+func TestAOIMoveDetailedForcesEnterScanBeyondThreshold(t *testing.T) {
+	aoi := newTestAOI()
+	const mover, neighbor int64 = 6101, 6102
+	moverLat, moverLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(mover, moverLat, moverLng)
+	neighborLat, neighborLng := localLatLng(aoi.config, 450, 0)
+	aoi.Insert(neighbor, neighborLat, neighborLng)
+	aoi.removeRelationship(mover, neighbor)
+	aoi.TakeStats()
+
+	// 移动 60m（超过默认 50m 阈值），同 cell。
+	farLat, farLng := localLatLng(aoi.config, 60, 0)
+	delta := aoi.MoveDetailed(mover, farLat, farLng)
+
+	if !sliceContains(delta.Entered, neighbor) {
+		t.Fatalf("Entered = %v, want to contain %d after crossing threshold", delta.Entered, neighbor)
+	}
+	stats := aoi.TakeStats()
+	if stats.FullEnterScans != 1 {
+		t.Fatalf("FullEnterScans = %d, want 1", stats.FullEnterScans)
+	}
+}
+
+func TestAOIMoveDetailedForcesEnterScanOnCellChange(t *testing.T) {
+	aoi := newTestAOI()
+	const mover, neighbor int64 = 6201, 6202
+	moverLat, moverLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(mover, moverLat, moverLng)
+	neighborLat, neighborLng := localLatLng(aoi.config, 700, 0)
+	aoi.Insert(neighbor, neighborLat, neighborLng)
+	aoi.removeRelationship(mover, neighbor)
+	aoi.TakeStats()
+
+	// 移动 30m 但换 cell（刚过 cell 边界）。
+	dstLat, dstLng := localLatLng(aoi.config, 610, 0)
+	delta := aoi.MoveDetailed(mover, dstLat, dstLng)
+	if !sliceContains(delta.Entered, neighbor) {
+		t.Fatalf("Entered = %v, want to contain %d after cell change", delta.Entered, neighbor)
+	}
+	stats := aoi.TakeStats()
+	if stats.FullEnterScans != 1 {
+		t.Fatalf("FullEnterScans = %d, want 1", stats.FullEnterScans)
+	}
+	if stats.SkippedEnterScans != 0 {
+		t.Fatalf("SkippedEnterScans = %d, want 0", stats.SkippedEnterScans)
+	}
+}
+
+func TestAOIMoveDetailedLeaveDetectionIsExactEvenWhenScanSkipped(t *testing.T) {
+	aoi := newTestAOI()
+	const mover, neighbor int64 = 6301, 6302
+	moverLat, moverLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(mover, moverLat, moverLng)
+	// 先建立可见：neighbor 在 400m（满足 enter 半径）
+	neighborLat, neighborLng := localLatLng(aoi.config, 400, 0)
+	aoi.Insert(neighbor, neighborLat, neighborLng)
+	// 将 neighbor 推到 590m——迟滞使其仍然可见
+	nbFarLat, nbFarLng := localLatLng(aoi.config, 590, 0)
+	aoi.Move(neighbor, nbFarLat, nbFarLng)
+	// mover 小移到 -20m：距离变为 610m > 600m → leave；移了 20m < 50m → 跳过 enter scan
+	aoi.TakeStats()
+	dstLat, dstLng := localLatLng(aoi.config, -20, 0)
+	delta := aoi.MoveDetailed(mover, dstLat, dstLng)
+	if !sliceContains(delta.Left, neighbor) {
+		t.Fatalf("Left = %v, want to contain %d (leave must be exact)", delta.Left, neighbor)
+	}
+	stats := aoi.TakeStats()
+	if stats.LeaveChecks == 0 {
+		t.Fatal("LeaveChecks must be > 0 even when enter scan is skipped")
+	}
+}
+
+func TestAOIInsertSetsEnterScanMarker(t *testing.T) {
+	aoi := newTestAOI()
+	const p int64 = 6401
+	lat, lng := localLatLng(aoi.config, 100, 200)
+	aoi.Insert(p, lat, lng)
+	pl, ok := aoi.players[p]
+	if !ok {
+		t.Fatalf("player %d missing", p)
+	}
+	if !pl.hasEnterScanMarker {
+		t.Fatal("Insert should set hasEnterScanMarker = true")
+	}
+	if pl.lastEnterScanCell != pl.cell {
+		t.Fatalf("lastEnterScanCell = %+v, want %+v", pl.lastEnterScanCell, pl.cell)
+	}
+}
+
+func TestAOISymmetryHoldsAfterSkippedScans(t *testing.T) {
+	aoi := newTestAOI()
+	const a, b int64 = 6501, 6502
+	aLat, aLng := localLatLng(aoi.config, 0, 0)
+	aoi.Insert(a, aLat, aLng)
+	bLat, bLng := localLatLng(aoi.config, 200, 0)
+	aoi.Insert(b, bLat, bLng)
+	a1Lat, a1Lng := localLatLng(aoi.config, 10, 10)
+	aoi.MoveDetailed(a, a1Lat, a1Lng)
+	b1Lat, b1Lng := localLatLng(aoi.config, 210, 10)
+	aoi.MoveDetailed(b, b1Lat, b1Lng)
+	if aoi.IsVisible(a, b) != aoi.IsVisible(b, a) {
+		t.Fatal("symmetry broken after skipped scans")
+	}
+}
+
 func TestMoveDetailedUnknownPlayerReturnsEmpty(t *testing.T) {
 	aoi := newTestAOI()
 	lat, lng := localLatLng(aoi.config, 0, 0)
