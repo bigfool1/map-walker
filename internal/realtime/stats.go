@@ -33,6 +33,10 @@ type HubSnapshot struct {
 	MovedPlayers          uint64
 	AOICandidatePairs     uint64
 	AOIDistanceChecks     uint64
+	AOIFullEnterScans     uint64
+	AOISkippedEnterScans  uint64
+	AOILeaveChecks        uint64
+	AOIStableRelationships uint64
 	RelationshipsEntered  uint64
 	RelationshipsLeft     uint64
 	ReplicationMessages   uint64

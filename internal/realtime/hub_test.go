@@ -1963,6 +1963,37 @@ func TestHubSnapshotDispatcherStats(t *testing.T) {
 	}
 }
 
+func TestHubSnapshotIncludesAOIEnterScanStats(t *testing.T) {
+	statsTick := make(chan time.Time, 8)
+	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1, 8)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+
+	// 发送一次输入触发 MoveDetailed，然后触发 stats tick
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	broadcasts <- time.Now()
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+	if snap == nil {
+		t.Fatal("snapshot is nil after stats tick")
+	}
+	// 验证四个新字段可达（编译期保证存在）
+	_ = snap.AOIFullEnterScans
+	_ = snap.AOISkippedEnterScans
+	_ = snap.AOILeaveChecks
+	_ = snap.AOIStableRelationships
+}
+
 func TestHubSnapshotBuilderStats(t *testing.T) {
 	statsTick := make(chan time.Time, 8)
 	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
