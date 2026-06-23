@@ -9,9 +9,10 @@ Design docs and plans are in `docs/superpowers/specs/` and
 `docs/superpowers/plans/`. Earlier phase history is in git log.
 
 **Most recently completed plan:**
-`docs/superpowers/plans/2026-06-21-aoi-movement-delta.md` —
-AOI `MoveDetailed` API 在一次调用中返回 entered、left、stable neighbors，
-消除 `snapshotMoverVisibility` 和重复的 `VisibleNeighbors` 查询。
+`docs/superpowers/plans/2026-06-22-aoi-incremental-enter-scan.md` —
+`MoveDetailed` 对小幅同 cell 移动跳过九格 enter 扫描（50m 阈值），
+leave 检测保持精确。新增 `FullEnterScans`、`SkippedEnterScans`、
+`LeaveChecks`、`StableRelationships` 统计，通过 `HubSnapshot` 暴露。
 
 ### Collectible field (`internal/game/`)
 
