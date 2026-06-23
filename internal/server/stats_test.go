@@ -23,6 +23,7 @@ func stubHubSnapshot() *realtime.HubSnapshot {
 		ConnectedClients:    3,
 		SimulationTicks:     100,
 		ReplicationMessages: 50,
+		EnterScanSkipRate:   0.75,
 		Builder: realtime.BuilderStats{
 			Recipients:           10,
 			Jobs:                 8,
@@ -111,6 +112,9 @@ func TestStatsResponseContainsAggregateFields(t *testing.T) {
 	}
 	if body.Hub.ReplicationMessages != 50 {
 		t.Errorf("hub.ReplicationMessages=%d want 50", body.Hub.ReplicationMessages)
+	}
+	if body.Hub.EnterScanSkipRate != 0.75 {
+		t.Errorf("hub.EnterScanSkipRate=%v want 0.75", body.Hub.EnterScanSkipRate)
 	}
 	if body.Hub.Dispatcher.Submitted != 100 {
 		t.Errorf("hub.Dispatcher.Submitted=%d want 100", body.Hub.Dispatcher.Submitted)

@@ -2025,11 +2025,33 @@ func TestHubSnapshotIncludesAOIEnterScanStats(t *testing.T) {
 	if snap == nil {
 		t.Fatal("snapshot is nil after stats tick")
 	}
-	// 验证四个新字段可达（编译期保证存在）
+	// 验证四个原始计数器和派生 skip rate 可达（编译期保证存在）
 	_ = snap.AOIFullEnterScans
 	_ = snap.AOISkippedEnterScans
 	_ = snap.AOILeaveChecks
 	_ = snap.AOIStableRelationships
+	_ = snap.EnterScanSkipRate
+}
+
+func TestHubSnapshotEnterScanSkipRateDenominatorZero(t *testing.T) {
+	// 不注册任何玩家——Full + Skipped 均为 0，skip rate 应为 0。
+	statsTick := make(chan time.Time, 8)
+	hub, _, _, _ := newTestHubWithConfigAndStats(testWorldConfig(), nil, nil, statsTick)
+	go hub.Run()
+	defer hub.Stop()
+
+	statsTick <- time.Now()
+	deadline := time.Now().Add(time.Second)
+	for hub.Snapshot() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	snap := hub.Snapshot()
+	if snap == nil {
+		t.Fatal("snapshot is nil")
+	}
+	if snap.EnterScanSkipRate != 0 {
+		t.Fatalf("EnterScanSkipRate = %v, want 0 (denominator zero)", snap.EnterScanSkipRate)
+	}
 }
 
 func TestHubSnapshotBuilderStats(t *testing.T) {

@@ -37,6 +37,7 @@ type HubSnapshot struct {
 	AOISkippedEnterScans  uint64
 	AOILeaveChecks        uint64
 	AOIStableRelationships uint64
+	EnterScanSkipRate      float64 // Skipped / (Full + Skipped), 分母零时为 0
 	RelationshipsEntered  uint64
 	RelationshipsLeft     uint64
 	ReplicationMessages   uint64

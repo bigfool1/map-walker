@@ -1005,6 +1005,13 @@ func (h *Hub) logStats() {
 	h.stats.aoiLeaveChecks += aoiStats.LeaveChecks
 	h.stats.aoiStableRelationships += aoiStats.StableRelationships
 
+	// 派生 enter scan skip rate
+	var enterScanSkipRate float64
+	total := h.stats.aoiFullEnterScans + h.stats.aoiSkippedEnterScans
+	if total > 0 {
+		enterScanSkipRate = float64(h.stats.aoiSkippedEnterScans) / float64(total)
+	}
+
 	snap := &HubSnapshot{
 		ConnectedClients:      len(h.clients),
 		AcceptedInputs:        h.stats.acceptedInputs,
@@ -1016,6 +1023,7 @@ func (h *Hub) logStats() {
 		AOISkippedEnterScans:  h.stats.aoiSkippedEnterScans,
 		AOILeaveChecks:        h.stats.aoiLeaveChecks,
 		AOIStableRelationships: h.stats.aoiStableRelationships,
+		EnterScanSkipRate:      enterScanSkipRate,
 		RelationshipsEntered:  h.stats.aoiRelationshipsEntered,
 		RelationshipsLeft:     h.stats.aoiRelationshipsLeft,
 		ReplicationMessages:   h.stats.replicationMessages,
@@ -1041,7 +1049,7 @@ func (h *Hub) logStats() {
 	h.snapshot.Store(snap)
 
 	log.Printf(
-		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d aoi_full_enter_scans=%d aoi_skipped_enter_scans=%d aoi_leave_checks=%d aoi_stable_relationships=%d replication_messages=%d replication_recipients=%d replication_bytes=%d aoi_detailed_move_us=%d collectible_recalc_us=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d builder_calls=%d builder_recipients=%d builder_jobs=%d builder_accum_us=%d builder_copy_us=%d builder_total_us=%d",
+		"realtime stats clients=%d inputs=%d simulation_ticks=%d moved_players=%d aoi_candidates=%d aoi_distance_checks=%d aoi_entered=%d aoi_left=%d aoi_full_enter_scans=%d aoi_skipped_enter_scans=%d aoi_leave_checks=%d aoi_stable_relationships=%d aoi_skip_rate=%.4f replication_messages=%d replication_recipients=%d replication_bytes=%d aoi_detailed_move_us=%d collectible_recalc_us=%d dispatched_submitted=%d dispatched_encoded=%d dispatched_skipped=%d dispatched_errors=%d dispatched_dropped=%d dispatched_send_failures=%d dispatched_queued=%d dispatched_workers=%d dispatched_bytes=%d builder_calls=%d builder_recipients=%d builder_jobs=%d builder_accum_us=%d builder_copy_us=%d builder_total_us=%d",
 		snap.ConnectedClients,
 		snap.AcceptedInputs,
 		snap.SimulationTicks,
@@ -1054,6 +1062,7 @@ func (h *Hub) logStats() {
 		snap.AOISkippedEnterScans,
 		snap.AOILeaveChecks,
 		snap.AOIStableRelationships,
+		snap.EnterScanSkipRate,
 		snap.ReplicationMessages,
 		snap.ReplicationRecipients,
 		snap.ReplicationBytes,
