@@ -58,18 +58,17 @@ func benchLoader(numClients int) SavedPlayerLoader {
 	}
 }
 
-// BenchmarkHubReplication 测量确定性客户端放置下的广播复制性能。
-// 直接调用 Step 和 broadcastReplication（消除 Hub select loop 的随机性），
-// 逻辑计数器在重复运行间保持稳定。
-func BenchmarkHubReplication(b *testing.B) {
+// BenchmarkHubReplicationRandomJump 是 worst-case 场景：每轮玩家随机跳位置，
+// 几乎必定换 cell，enter scan 不会跳过。用于测量 AOI 全扫描上限性能。
+func BenchmarkHubReplicationRandomJump(b *testing.B) {
 	for _, numClients := range []int{2000, 3000} {
 		b.Run(fmt.Sprintf("%d", numClients), func(b *testing.B) {
-			benchHubReplication(b, numClients)
+			benchHubReplicationRandomJump(b, numClients)
 		})
 	}
 }
 
-func benchHubReplication(b *testing.B, numClients int) {
+func benchHubReplicationRandomJump(b *testing.B, numClients int) {
 	hub, clients := setupDirectBenchHub(b, numClients)
 	moveCount := int(float64(numClients) * benchMovementRatio)
 
@@ -119,6 +118,13 @@ func benchHubReplication(b *testing.B, numClients int) {
 		b.ReportMetric(float64(moveCount), "moved/op")
 		b.ReportMetric(float64(stats.RelationshipsEntered), "entered/op")
 		b.ReportMetric(float64(stats.RelationshipsLeft), "left/op")
+
+		b.ReportMetric(float64(stats.FullEnterScans), "full_enter_scans/op")
+		b.ReportMetric(float64(stats.SkippedEnterScans), "skipped_enter_scans/op")
+		b.ReportMetric(skipRate(stats), "enter_scan_skip_rate")
+		b.ReportMetric(float64(stats.LeaveChecks), "leave_checks/op")
+		b.ReportMetric(float64(stats.CandidatePairs), "candidate_pairs/op")
+		b.ReportMetric(float64(stats.DistanceChecks), "distance_checks/op")
 
 		direction *= -1
 	}
@@ -362,4 +368,12 @@ func benchDispatcher(b *testing.B, workerCount int) {
 		b.ReportMetric(float64(drops), "dropped/op")
 		b.ReportMetric(float64(workerCount), "workers")
 	}
+}
+
+func skipRate(stats game.AOIStats) float64 {
+	total := stats.FullEnterScans + stats.SkippedEnterScans
+	if total == 0 {
+		return 0
+	}
+	return float64(stats.SkippedEnterScans) / float64(total)
 }
