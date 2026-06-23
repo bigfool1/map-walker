@@ -40,6 +40,16 @@ func benchOriginCfg() game.Config {
 	}
 }
 
+// benchContinuousCfg 使用贴近真实玩家的速度：每 50ms tick 移动 30m，
+// 低于 50m EnterRescanDistanceMeters 默认值，大部分移动会跳过 enter 扫描。
+func benchContinuousCfg() game.Config {
+	return game.Config{
+		SpawnLat:             benchOriginLat,
+		SpawnLng:             benchOriginLng,
+		SpeedMetersPerSecond: 600,
+	}
+}
+
 func benchLoader(numClients int) SavedPlayerLoader {
 	aoiCfg := game.AOIConfigFromWorld(benchOriginCfg())
 	return func(userID int64) (SavedPlayerLoad, bool) {
@@ -130,11 +140,81 @@ func benchHubReplicationRandomJump(b *testing.B, numClients int) {
 	}
 }
 
+// BenchmarkHubReplicationContinuousMove 模拟连续方向移动：玩家保持在世界中，
+// 每轮按同一方向移动，不断重置位置。大部分移动低于 50m 阈值，enter scan 可跳过。
+func BenchmarkHubReplicationContinuousMove(b *testing.B) {
+	for _, numClients := range []int{2000, 3000} {
+		b.Run(fmt.Sprintf("%d", numClients), func(b *testing.B) {
+			benchHubReplicationContinuousMove(b, numClients)
+		})
+	}
+}
+
+func benchHubReplicationContinuousMove(b *testing.B, numClients int) {
+	hub, clients := setupDirectBenchHubCfg(b, benchContinuousCfg(), numClients)
+	moveCount := int(float64(numClients) * benchMovementRatio)
+
+	// 预热：交替方向多轮移动建立 AOI 关系
+	var globalSeq uint64 = 1000
+	direction := 1.0
+	for range 10 {
+		globalSeq = benchDirectApplyInputs(hub, clients, moveCount, globalSeq, direction)
+		hub.world.Step(simulationInterval)
+		hub.broadcastReplication()
+		hub.dispatcher.WaitIdle()
+		benchDrainAllDirect(clients)
+		direction *= -1
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		b.StopTimer()
+		globalSeq = benchDirectApplyInputs(hub, clients, moveCount, globalSeq, direction)
+		// 清空 AOI 统计，只测量当前这一步
+		hub.aoi.TakeStats()
+		b.StartTimer()
+
+		hub.world.Step(simulationInterval)
+		hub.broadcastReplication()
+		hub.dispatcher.WaitIdle()
+
+		stats := hub.aoi.TakeStats()
+		msgs, bytes := benchDrainAllDirect(clients)
+
+		// 报告内部计时分解
+		b.ReportMetric(float64(hub.stats.aoiDetailedMoveDuration)/1000, "aoi_move_us/op")
+		b.ReportMetric(float64(hub.stats.collectibleRecalcDuration)/1000, "collect_recalc_us/op")
+		hub.stats.aoiDetailedMoveDuration = 0
+		hub.stats.collectibleRecalcDuration = 0
+
+		b.ReportMetric(float64(msgs), "msgs/op")
+		b.ReportMetric(float64(bytes), "bytes/op")
+		b.ReportMetric(float64(moveCount), "moved/op")
+		b.ReportMetric(float64(stats.RelationshipsEntered), "entered/op")
+		b.ReportMetric(float64(stats.RelationshipsLeft), "left/op")
+
+		b.ReportMetric(float64(stats.FullEnterScans), "full_enter_scans/op")
+		b.ReportMetric(float64(stats.SkippedEnterScans), "skipped_enter_scans/op")
+		b.ReportMetric(skipRate(stats), "enter_scan_skip_rate")
+		b.ReportMetric(float64(stats.LeaveChecks), "leave_checks/op")
+		b.ReportMetric(float64(stats.CandidatePairs), "candidate_pairs/op")
+		b.ReportMetric(float64(stats.DistanceChecks), "distance_checks/op")
+
+		direction *= -1
+	}
+}
+
 // setupDirectBenchHub 创建 Hub 并直接注册客户端（不启动 goroutine）
 func setupDirectBenchHub(b *testing.B, numClients int) (*Hub, []*testClient) {
+	return setupDirectBenchHubCfg(b, benchOriginCfg(), numClients)
+}
+
+func setupDirectBenchHubCfg(b *testing.B, cfg game.Config, numClients int) (*Hub, []*testClient) {
 	b.Helper()
 
-	world := game.NewWorld(benchOriginCfg())
+	world := game.NewWorld(cfg)
 	loader := benchLoader(numClients)
 
 	hub := newHub(
