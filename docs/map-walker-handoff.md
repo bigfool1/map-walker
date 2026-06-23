@@ -9,10 +9,11 @@ Design docs and plans are in `docs/superpowers/specs/` and
 `docs/superpowers/plans/`. Earlier phase history is in git log.
 
 **Most recently completed plan:**
-`docs/superpowers/plans/2026-06-22-aoi-incremental-enter-scan.md` —
-`MoveDetailed` 对小幅同 cell 移动跳过九格 enter 扫描（50m 阈值），
-leave 检测保持精确。新增 `FullEnterScans`、`SkippedEnterScans`、
-`LeaveChecks`、`StableRelationships` 统计，通过 `HubSnapshot` 暴露。
+`docs/superpowers/plans/2026-06-23-aoi-enter-scan-observability-workload.md` —
+HubSnapshot 暴露 `EnterScanSkipRate`（Skipped/(Full+Skipped)），
+BenchmarkHubReplication 拆为 RandomJump（worst-case, skip=0%）和
+ContinuousMove（连续方向移动, skip=94%）。连续移动下 AOI 耗时降至 1/5，
+candidate pairs 降至 1/17。
 
 ### Collectible field (`internal/game/`)
 
