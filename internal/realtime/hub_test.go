@@ -1632,6 +1632,44 @@ func hysteresisPlayerLoader() SavedPlayerLoader {
 	}
 }
 
+// aoiSkipScanWorldConfig 选择速度 600 m/s 使每个 50ms 仿真 tick 恰好移动 30m。
+// 配合 50m EnterRescanDistanceMeters 默认值，一 tick = skipped，二 tick = forced。
+func aoiSkipScanWorldConfig() game.Config {
+	cfg := testWorldConfig()
+	cfg.SpeedMetersPerSecond = 600
+	return cfg
+}
+
+// aoiDelayedEnterLoader 将 alice 放在 (0,0)、bob 放在 (520,0)，初始 520m 互不可见。
+func aoiDelayedEnterLoader() SavedPlayerLoader {
+	return func(userID int64) (SavedPlayerLoad, bool) {
+		switch userID {
+		case 1001:
+			lat, lng := localLatLng(0, 0)
+			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
+		case 1002:
+			lat, lng := localLatLng(520, 0)
+			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
+		}
+		return SavedPlayerLoad{}, false
+	}
+}
+
+// aoiStableFanoutLoader 将 alice (0,0) 和 bob (200,0) 互相可见。
+func aoiStableFanoutLoader() SavedPlayerLoader {
+	return func(userID int64) (SavedPlayerLoad, bool) {
+		switch userID {
+		case 1001:
+			lat, lng := localLatLng(0, 0)
+			return SavedPlayerLoad{Username: "alice", Lat: lat, Lng: lng, HasPosition: true}, true
+		case 1002:
+			lat, lng := localLatLng(200, 0)
+			return SavedPlayerLoad{Username: "bob", Lat: lat, Lng: lng, HasPosition: true}, true
+		}
+		return SavedPlayerLoad{}, false
+	}
+}
+
 func fixedPositionsLoader(positions map[int64][2]float64) SavedPlayerLoader {
 	return func(userID int64) (SavedPlayerLoad, bool) {
 		coords, ok := positions[userID]
@@ -2029,6 +2067,89 @@ func TestHubSnapshotBuilderStats(t *testing.T) {
 	}
 	if snap.Builder.Recipients == 0 {
 		t.Error("Builder.Recipients=0 after broadcast with movement")
+	}
+}
+
+func TestHubReplicationDelayedEnterForSmallSameCellMove(t *testing.T) {
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(
+		aoiSkipScanWorldConfig(), aoiDelayedEnterLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 16)
+	bob := NewTestClient(1002, 16)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+
+	// Tick 1: alice 向东移 30m（50ms tick × 600 m/s）。
+	// 距上次 enter scan 标记 (0,0) = 30 < 50m 阈值，同 cell → 跳过 enter scan。
+	// 即使到 bob 距离变为 490m < 500m，bob 也不能进入 alice 可见性。
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	time.Sleep(5 * time.Millisecond) // 确保 simulation 先于 broadcast 被处理
+	broadcasts <- time.Now()
+	update := mustReceiveReplicationUpdate(t, alice)
+	if update.SelfPosition == nil {
+		t.Fatalf("alice should receive selfPosition after moving, got %+v", update)
+	}
+	if len(update.Entered) != 0 {
+		t.Fatalf("expected delayed enter (skipped scan), got entered=%+v", update.Entered)
+	}
+
+	// Tick 2: alice 继续右移；累计移动 +60m 东。
+	// 距上次 enter scan 标记 (0,0) = 60 >= 50m → 强制扫描。
+	// 距 bob = 460m < 500m → alice enters bob 的可见性。
+	// pendingEntered 从 alice 扇出到她的可见邻居（bob）。
+	simulations <- time.Now()
+	time.Sleep(5 * time.Millisecond)
+	broadcasts <- time.Now()
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	if len(bobUpdate.Entered) != 1 || bobUpdate.Entered[0].ID != 1001 {
+		t.Fatalf("expected alice entered for bob after threshold crossing, got %+v", bobUpdate.Entered)
+	}
+}
+
+func TestHubReplicationStablePositionFanoutAfterSkippedScan(t *testing.T) {
+	hub, simulations, broadcasts, _ := newTestHubWithConfig(
+		aoiSkipScanWorldConfig(), aoiStableFanoutLoader(), nil)
+	go hub.Run()
+	defer hub.Stop()
+
+	alice := NewTestClient(1001, 16)
+	bob := NewTestClient(1002, 16)
+	hub.Register(alice)
+	mustReceiveInitialization(t, alice)
+	hub.Register(bob)
+	mustReceiveInitialization(t, bob)
+	// bob 在 200m 处（可见），注册触发 pending entered 事件。
+	// 消耗第一个 broadcast 来吸收该事件，避免与后续移动 tick 混淆。
+	broadcasts <- time.Now()
+	mustReceiveReplicationUpdate(t, alice)
+
+	// alice 向东移 30m。同 cell、< 50m 阈值 → 跳过 enter scan。
+	// bob 仍可见（距离 170m，远在迟滞内）。
+	// bob 必须通过 stable-neighbor fanout 收到 alice 更新后的位置。
+	hub.ApplyInput(alice, game.InputState{Sequence: 1, Right: true})
+	simulations <- time.Now()
+	time.Sleep(5 * time.Millisecond)
+	broadcasts <- time.Now()
+
+	aliceUpdate := mustReceiveReplicationUpdate(t, alice)
+	if aliceUpdate.SelfPosition == nil {
+		t.Fatal("alice should receive own selfPosition")
+	}
+	bobUpdate := mustReceiveReplicationUpdate(t, bob)
+	found := false
+	for _, p := range bobUpdate.Positions {
+		if p.ID == 1001 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("bob should receive alice's stable position, got %+v", bobUpdate.Positions)
 	}
 }
 
