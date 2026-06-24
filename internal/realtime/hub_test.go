@@ -359,7 +359,7 @@ func TestHubUpdateAppearanceBroadcastsToAllClients(t *testing.T) {
 func TestHubUpdateAppearanceInvisibleNeighborSuppressed(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 		1003: {900, 0},
 	})
 	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
@@ -429,7 +429,7 @@ func TestHubUpdateAppearanceCollapsesToFinalValue(t *testing.T) {
 func TestHubUpdateAppearanceLeftPrecedence(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 	})
 	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
@@ -464,7 +464,7 @@ func TestHubUpdateAppearanceLeftPrecedence(t *testing.T) {
 func TestHubUpdateAppearanceEnteredIncludesFinalAppearance(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 	})
 	hub, _, broadcasts, _ := newTestHubWithLoader(loader, nil)
 	go hub.Run()
@@ -853,7 +853,7 @@ func TestHubTwoSimulationTicksOneReplication(t *testing.T) {
 func TestHubMovementTriggersStationaryPeerEntered(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {700, 0},
+		1002: {700, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
@@ -894,7 +894,7 @@ func TestHubMovementTriggersStationaryPeerEntered(t *testing.T) {
 func TestHubMovementExitQueuesLeft(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {400, 0},
+		1002: {400, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
@@ -929,7 +929,7 @@ func TestHubMovementExitQueuesLeft(t *testing.T) {
 func TestHubVisibleMovementSendsPositionOnly(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
@@ -962,7 +962,7 @@ func TestHubVisibleMovementSendsPositionOnly(t *testing.T) {
 func TestHubStaticDistantClientReceivesNoUpdate(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 		1003: {900, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
@@ -995,7 +995,7 @@ func TestHubStaticDistantClientReceivesNoUpdate(t *testing.T) {
 func TestHubHysteresisMovementRetainsVisibility(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {400, 0},
+		1002: {400, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
@@ -1028,7 +1028,7 @@ func TestHubHysteresisMovementRetainsVisibility(t *testing.T) {
 func TestHubOneMessagePerClientPerTick(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
@@ -1058,8 +1058,8 @@ func TestHubOneMessagePerClientPerTick(t *testing.T) {
 func TestHubSlowClientRemovalPreservesAOI(t *testing.T) {
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
-		1004:  {900, 0},
+		1002: {100, 0},
+		1004: {900, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfig(fastTestWorldConfig(), loader, nil)
 	go hub.Run()
@@ -1475,7 +1475,7 @@ func TestHubLogsAOIStats(t *testing.T) {
 	statsTick := make(chan time.Time, 8)
 	loader := fixedPositionsLoader(map[int64][2]float64{
 		1001: {0, 0},
-		1002:   {100, 0},
+		1002: {100, 0},
 	})
 	hub, simulations, broadcasts, _ := newTestHubWithConfigAndStats(fastTestWorldConfig(), loader, nil, statsTick)
 	go hub.Run()
@@ -1963,7 +1963,7 @@ func TestHubSnapshotDispatcherStats(t *testing.T) {
 
 	// 给 Hub 装一个 dispatcher，worker 处理 job 后触发统计计数
 	d := NewReplicationDispatcher(2, 8, nil)
-	hub.dispatcher = d
+	hub.replication.dispatcher = d
 	defer d.Stop()
 
 	go hub.Run()
@@ -2191,7 +2191,7 @@ func TestHubDispatcherSendFailureDisconnectsClient(t *testing.T) {
 		Positions: []game.PlayerPosition{{ID: 2001, Lat: 31.1, Lng: 121.1}},
 	}
 	cp := copyReplicationChanges(changes)
-	hub.dispatcher.Submit(replicationJob{recipientID: 1, tick: 1, client: fc, changes: cp})
+	hub.replication.dispatcher.Submit(replicationJob{recipientID: 1, tick: 1, client: fc, changes: cp})
 
 	// onSendFailure → DisconnectUser(1) → removeClient(tc) → tc.CloseSend()
 	select {
@@ -2209,7 +2209,7 @@ func TestHubStopStopsDispatcher(t *testing.T) {
 	hub.Stop() // 不应 hang
 
 	// dispatcher 停止后 Submit 应失败
-	if hub.dispatcher.Submit(replicationJob{}) {
+	if hub.replication.dispatcher.Submit(replicationJob{}) {
 		t.Fatal("submit after hub stop should fail")
 	}
 }
@@ -2250,7 +2250,7 @@ func TestHubCollectPickupSuccess(t *testing.T) {
 
 	// 获取初始化后可见的收集品
 	pos, _ := hub.world.PlayerPosition(1001)
-	collectibles := hub.collectibleField.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
+	collectibles := hub.collectibles.field.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
 	if len(collectibles) == 0 {
 		t.Skip("10m 内无收集品，跳过拾取测试")
 	}
@@ -2279,7 +2279,7 @@ func TestHubCollectCooldown(t *testing.T) {
 	mustReceiveInitialization(t, alice)
 
 	pos, _ := hub.world.PlayerPosition(1001)
-	collectibles := hub.collectibleField.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
+	collectibles := hub.collectibles.field.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
 	if len(collectibles) == 0 {
 		t.Skip("10m 内无收集品")
 	}
@@ -2298,14 +2298,14 @@ func TestHubCollectSyntheticRejection(t *testing.T) {
 	go hub.Run()
 	defer hub.Stop()
 
-	hub.syntheticPlayerIDs[1001] = struct{}{}
+	hub.players.syntheticIDs[1001] = struct{}{}
 
 	alice := NewTestClient(1001, 8)
 	hub.Register(alice)
 	mustReceiveInitialization(t, alice)
 
 	pos, _ := hub.world.PlayerPosition(1001)
-	collectibles := hub.collectibleField.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
+	collectibles := hub.collectibles.field.CollectiblesWithinRadius(pos.Lat, pos.Lng, 10)
 	if len(collectibles) == 0 {
 		t.Skip("10m 内无收集品")
 	}

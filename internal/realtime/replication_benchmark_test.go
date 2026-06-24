@@ -88,12 +88,12 @@ func benchHubReplicationRandomJump(b *testing.B, numClients int) {
 		warmupSeq = benchDirectApplyInputs(hub, clients, moveCount, warmupSeq, 1.0)
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
-		hub.dispatcher.WaitIdle()
+		hub.replication.dispatcher.WaitIdle()
 		benchDrainAllDirect(clients)
 		warmupSeq = benchDirectApplyInputs(hub, clients, moveCount, warmupSeq, -1.0)
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
-		hub.dispatcher.WaitIdle()
+		hub.replication.dispatcher.WaitIdle()
 		benchDrainAllDirect(clients)
 	}
 
@@ -112,16 +112,16 @@ func benchHubReplicationRandomJump(b *testing.B, numClients int) {
 
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
-		hub.dispatcher.WaitIdle()
+		hub.replication.dispatcher.WaitIdle()
 
 		stats := hub.aoi.TakeStats()
 		msgs, bytes := benchDrainAllDirect(clients)
 
 		// 报告内部计时分解
-		b.ReportMetric(float64(hub.stats.aoiDetailedMoveDuration)/1000, "aoi_move_us/op")
-		b.ReportMetric(float64(hub.stats.collectibleRecalcDuration)/1000, "collect_recalc_us/op")
-		hub.stats.aoiDetailedMoveDuration = 0
-		hub.stats.collectibleRecalcDuration = 0
+		b.ReportMetric(float64(hub.stats.interval.aoiDetailedMoveDuration)/1000, "aoi_move_us/op")
+		b.ReportMetric(float64(hub.stats.interval.collectibleRecalcDuration)/1000, "collect_recalc_us/op")
+		hub.stats.interval.aoiDetailedMoveDuration = 0
+		hub.stats.interval.collectibleRecalcDuration = 0
 
 		b.ReportMetric(float64(msgs), "msgs/op")
 		b.ReportMetric(float64(bytes), "bytes/op")
@@ -161,7 +161,7 @@ func benchHubReplicationContinuousMove(b *testing.B, numClients int) {
 		globalSeq = benchDirectApplyInputs(hub, clients, moveCount, globalSeq, direction)
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
-		hub.dispatcher.WaitIdle()
+		hub.replication.dispatcher.WaitIdle()
 		benchDrainAllDirect(clients)
 		direction *= -1
 	}
@@ -178,16 +178,16 @@ func benchHubReplicationContinuousMove(b *testing.B, numClients int) {
 
 		hub.world.Step(simulationInterval)
 		hub.broadcastReplication()
-		hub.dispatcher.WaitIdle()
+		hub.replication.dispatcher.WaitIdle()
 
 		stats := hub.aoi.TakeStats()
 		msgs, bytes := benchDrainAllDirect(clients)
 
 		// 报告内部计时分解
-		b.ReportMetric(float64(hub.stats.aoiDetailedMoveDuration)/1000, "aoi_move_us/op")
-		b.ReportMetric(float64(hub.stats.collectibleRecalcDuration)/1000, "collect_recalc_us/op")
-		hub.stats.aoiDetailedMoveDuration = 0
-		hub.stats.collectibleRecalcDuration = 0
+		b.ReportMetric(float64(hub.stats.interval.aoiDetailedMoveDuration)/1000, "aoi_move_us/op")
+		b.ReportMetric(float64(hub.stats.interval.collectibleRecalcDuration)/1000, "collect_recalc_us/op")
+		hub.stats.interval.aoiDetailedMoveDuration = 0
+		hub.stats.interval.collectibleRecalcDuration = 0
 
 		b.ReportMetric(float64(msgs), "msgs/op")
 		b.ReportMetric(float64(bytes), "bytes/op")
@@ -219,11 +219,11 @@ func setupDirectBenchHubCfg(b *testing.B, cfg game.Config, numClients int) (*Hub
 
 	hub := newHub(
 		world, loader, nil, nil, nil,
-		make(chan time.Time),  // simCh — 不使用（直接调用 Step）
-		make(chan time.Time),  // broadcastCh — 不使用
-		make(chan time.Time),  // persistenceCh — 不使用
-		nil,                   // statsTick — 不用
-		func() {},             // stopTickers — 不用
+		make(chan time.Time), // simCh — 不使用（直接调用 Step）
+		make(chan time.Time), // broadcastCh — 不使用
+		make(chan time.Time), // persistenceCh — 不使用
+		nil,                  // statsTick — 不用
+		func() {},            // stopTickers — 不用
 	)
 
 	clients := make([]*testClient, numClients)
@@ -344,8 +344,8 @@ func benchmarkBuilder(b *testing.B, numPlayers int, useInterface bool) {
 	}
 
 	input := ReplicationBuildInput{
-		Tick:              42,
-		MovementDeltas:    movementDeltas,
+		Tick:               42,
+		MovementDeltas:     movementDeltas,
 		PendingAppearances: pendingAppearances,
 		CollectEntered:     collectEntered,
 	}
@@ -406,8 +406,8 @@ func benchDispatcher(b *testing.B, workerCount int) {
 			{ID: 2001, Lat: 31.2305, Lng: 121.4738},
 			{ID: 2002, Lat: 31.2306, Lng: 121.4739},
 		},
-		Entered:          []game.PlayerState{{ID: 3001, Username: "new", Lat: 31.2310, Lng: 121.4740}},
-		LeftPlayerIDs:    []int64{4001},
+		Entered:            []game.PlayerState{{ID: 3001, Username: "new", Lat: 31.2310, Lng: 121.4740}},
+		LeftPlayerIDs:      []int64{4001},
 		CollectibleIDsLeft: []uint64{1, 2},
 	}
 

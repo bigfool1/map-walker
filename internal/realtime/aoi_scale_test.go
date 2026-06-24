@@ -188,7 +188,6 @@ func playerIDForIndex(index int) int64 {
 	return int64(index + 1)
 }
 
-
 func playerLocalPosition(index int) (float64, float64) {
 	if index >= denseClusterStart {
 		offset := index - denseClusterStart
@@ -226,7 +225,7 @@ func assertVisibleSnapshotMatchesAOI(t *testing.T, hub *Hub, client *testClient,
 
 func assertAOISymmetry(t *testing.T, hub *Hub) {
 	t.Helper()
-	for clientID := range hub.clients {
+	for clientID := range hub.players.clients {
 		for _, neighborID := range hub.aoi.VisibleNeighbors(clientID) {
 			if !hub.isVisibleTo(neighborID, clientID) {
 				t.Fatalf("asymmetric visibility: %d sees %d but not vice versa", clientID, neighborID)
